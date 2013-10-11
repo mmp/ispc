@@ -1904,6 +1904,12 @@ lGSToGSBaseOffsets(llvm::CallInst *callInst) {
             func = m->module->getFunction(pgFuncName);
             baseOffsetsFunc = m->module->getFunction(pgboFuncName);
             baseOffsets32Func = m->module->getFunction(pgbo32FuncName);
+            if (!func)
+              fprintf(stderr, "GS func %s\n", pgFuncName);
+            if (!baseOffsetsFunc)
+              fprintf(stderr, "GS func %s\n", pgboFuncName);
+            if (!baseOffsets32Func)
+              fprintf(stderr, "GS func %s\n", pgbo32FuncName);
         }
         llvm::Function *func;
         llvm::Function *baseOffsetsFunc, *baseOffsets32Func;

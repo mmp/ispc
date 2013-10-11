@@ -306,7 +306,11 @@ lCheckModuleIntrinsics(llvm::Module *module) {
             llvm::Type *intrinsicType =
                 llvm::Intrinsic::getType(*g->ctx, id);
             intrinsicType = llvm::PointerType::get(intrinsicType, 0);
-            Assert(func->getType() == intrinsicType);
+            if (func->getType() != intrinsicType) {
+              intrinsicType->dump();
+              func->dump();
+            }
+//CO            Assert(func->getType() == intrinsicType);
         }
     }
 }
@@ -971,6 +975,21 @@ DefineStdlib(SymbolTable *symbolTable, llvm::LLVMContext *ctx, llvm::Module *mod
             }
             else {
                 EXPORT_MODULE(builtins_bitcode_avx2_x2_64bit);
+            }
+            break;
+        default:
+            FATAL("logic error in DefineStdlib");
+        }
+        break;
+    }
+    case Target::AVX512: {
+        switch (g->target->getVectorWidth()) {
+        case 16:
+            if (runtime32) {
+                EXPORT_MODULE(builtins_bitcode_avx512_32bit);
+            }
+            else {
+                EXPORT_MODULE(builtins_bitcode_avx512_64bit);
             }
             break;
         default:

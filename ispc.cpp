@@ -151,6 +151,9 @@ static const char *supportedCPUs[] = {
 #if !defined(LLVM_3_1)
     , "core-avx-i", "core-avx2"
 #endif // LLVM 3.2+
+#if !defined (LLVM_3_1) && !defined(LLVM_3_2) && !defined(LLVM_3_3)
+    , "knl"
+#endif // LLVM3.4+
 };
 
 Target::Target(const char *arch, const char *cpu, const char *isa, bool pic) :
@@ -197,6 +200,10 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic) :
             else if (!strcmp(cpu, "sandybridge") ||
                 !strcmp(cpu, "corei7-avx"))
                 isa = "avx-i32x8";
+#if !defined (LLVM_3_1) && !defined(LLVM_3_2) && !defined(LLVM_3_3)
+            else if (!strcmp(cpu, "knl"))
+                isa = "avx512";
+#endif // LLVM3.4 +
             else if (!strcmp(cpu, "corei7") ||
                      !strcmp(cpu, "penryn"))
                 isa = "sse4-i32x4";
@@ -486,6 +493,20 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic) :
         this->m_hasGather = true;
 #endif
     }
+#if !defined (LLVM_3_1) && !defined(LLVM_3_2) && !defined(LLVM_3_3)
+    else if (!strcasecmp(isa, "avx512") ||
+             !strcasecmp(isa, "avx512-i1x16")) {
+        this->m_isa = Target::AVX512;
+        this->m_nativeVectorWidth = 16;
+        this->m_vectorWidth = 16;
+        this->m_attributes = "+avx512f";
+        this->m_maskingIsFree = true;
+        this->m_maskBitCount = 1;
+        this->m_hasHalf = true;
+        this->m_hasRand = true;
+        this->m_hasGather = this->m_hasScatter = true;
+    }
+#endif // LLVM 3.4+
 #ifdef ISPC_ARM_ENABLED
     else if (!strcasecmp(isa, "neon-i8x16")) {
         this->m_isa = Target::NEON8;
@@ -645,6 +666,9 @@ Target::SupportedTargets() {
         "avx1-i32x8, avx1-i32x16, "
         "avx1.1-i32x8, avx1.1-i32x16, "
         "avx2-i32x8, avx2-i32x16, "
+#if !defined (LLVM_3_1) && !defined(LLVM_3_2) && !defined(LLVM_3_3)
+        "avx512-i1x16",
+#endif
         "generic-x1, generic-x4, generic-x8, generic-x16, "
             "generic-x32, generic-x64";
 }
@@ -700,6 +724,8 @@ Target::ISAToString(ISA isa) {
         return "avx11";
     case Target::AVX2:
         return "avx2";
+    case Target::AVX512:
+        return "avx512";
     case Target::GENERIC:
         return "generic";
     default:
