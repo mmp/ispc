@@ -667,7 +667,7 @@ Target::SupportedTargets() {
         "avx1.1-i32x8, avx1.1-i32x16, "
         "avx2-i32x8, avx2-i32x16, "
 #if !defined (LLVM_3_1) && !defined(LLVM_3_2) && !defined(LLVM_3_3)
-        "avx512-i1x16",
+        "avx512-i1x16"
 #endif
         "generic-x1, generic-x4, generic-x8, generic-x16, "
             "generic-x32, generic-x64";
