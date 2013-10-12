@@ -307,11 +307,7 @@ lCheckModuleIntrinsics(llvm::Module *module) {
             llvm::Type *intrinsicType =
                 llvm::Intrinsic::getType(*g->ctx, id);
             intrinsicType = llvm::PointerType::get(intrinsicType, 0);
-            if (func->getType() != intrinsicType) {
-              intrinsicType->dump();
-              func->dump();
-            }
-//CO            Assert(func->getType() == intrinsicType);
+            Assert(func->getType() == intrinsicType);
         }
     }
 }
