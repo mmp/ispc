@@ -206,6 +206,14 @@ define <8 x double> @__max_varying_double(<8 x double>, <8 x double>) nounwind r
 }
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; svml
+
+; FIXME
+include(`svml.m4')
+svml_stubs(float,f,WIDTH)
+svml_stubs(double,d,WIDTH)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; horizontal ops / reductions
 
 declare i32 @llvm.x86.sse2.pmovmskb.128(<16 x i8>) nounwind readnone

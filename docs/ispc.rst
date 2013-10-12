@@ -270,6 +270,14 @@ new reserved words: ``unmasked``, ``foreach_unique``, ``foreach_active``,
 and ``in``.  Any program that happens to have a variable or function with
 one of these names must be modified to rename that symbol.
 
+Updating ISPC Programs For Changes In ISPC 1.5.0
+------------------------------------------------
+
+This release adds support for double precision floating point constants.
+Double precision floating point constants are floating point number with
+``d`` suffix and optional exponent part. Here are some examples: 3.14d,
+31.4d-1, 1.d, 1.0d, 1d-2. Note that floating point number without suffix is
+treated as single precision constant.
 
 Getting Started with ISPC
 =========================
@@ -1349,7 +1357,8 @@ but are likely to be supported in future releases:
 * Bitfield members of ``struct`` types
 * Variable numbers of arguments to functions
 * Literal floating-point constants (even without a ``f`` suffix) are
-  currently treated as being ``float`` type, not ``double``
+  currently treated as being ``float`` type, not ``double``. To have a double
+  precision floating point constant use ``d`` suffix.
 * The ``volatile`` qualifier
 * The ``register`` storage class for variables.  (Will be ignored).
 
@@ -3333,6 +3342,9 @@ for this argument.
   approximately 1.45e-6 over the range -10pi to 10pi.)
 * ``fast``: more efficient but lower accuracy versions of the default ``ispc``
   implementations.
+* ``svml``: use Intel "Short Vector Math Library".  Use
+  ``icc`` to link your final executable so that the appropriate libraries
+  are linked.
 * ``system``: use the system's math library.  On many systems, these
   functions are more accurate than both of ``ispc``'s implementations.
   Using these functions may be quite
@@ -3659,7 +3671,7 @@ command-line argument.
 Cross-Program Instance Operations
 ---------------------------------
 
-``ispc`` programs are often used to expresses independently-executing
+``ispc`` programs are often used to express independently-executing
 programs performing computation on separate data elements.  (i.e. pure
 data-parallelism).  However, it's often the case where it's useful for the
 program instances to be able to cooperate in computing results.  The
@@ -3690,7 +3702,7 @@ the running program instances.
 
 The ``rotate()`` function allows each program instance to find the value of
 the given value that their neighbor ``offset`` steps away has.  For
-example, on an 8-wide target, if ``offset`` has the value (1, 2, 3, 4, 5,
+example, on an 8-wide target, if ``value`` has the value (1, 2, 3, 4, 5,
 6, 7, 8) across the gang of running program instances, then ``rotate(value,
 -1)`` causes the first program instance to get the value 8, the second
 program instance to get the value 1, the third 2, and so forth.  The
@@ -3769,7 +3781,7 @@ where the ``i`` th element of ``x`` has been replaced with the value ``v``
 Reductions
 ----------
 
-A number routines are available to evaluate conditions across the
+A number of routines are available to evaluate conditions across the
 running program instances.  For example, ``any()`` returns ``true`` if
 the given value ``v`` is ``true`` for any of the SPMD program
 instances currently running, ``all()`` returns ``true`` if it true

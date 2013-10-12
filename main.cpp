@@ -112,6 +112,7 @@ usage(int ret) {
     printf("    [--math-lib=<option>]\t\tSelect math library\n");
     printf("        default\t\t\t\tUse ispc's built-in math functions\n");
     printf("        fast\t\t\t\tUse high-performance but lower-accuracy math functions\n");
+    printf("        svml\t\t\t\tUse the Intel(r) SVML math libraries\n");
     printf("        system\t\t\t\tUse the system's math library (*may be quite slow*)\n");
     printf("    [-MMM <filename>\t\t\t\tWrite #include dependencies to given file.\n");
     printf("    [--nostdlib]\t\t\tDon't make the ispc standard library available\n");
@@ -328,7 +329,6 @@ int main(int Argc, char *Argv[]) {
     // as we're parsing below
     g = new Globals;
 
-    bool debugSet = false, optSet = false;
     Module::OutputType ot = Module::Object;
     bool generatePIC = false;
     const char *arch = NULL, *cpu = NULL, *target = NULL;
@@ -371,7 +371,6 @@ int main(int Argc, char *Argv[]) {
             g->emitInstrumentation = true;
         else if (!strcmp(argv[i], "-g")) {
             g->generateDebuggingSymbols = true;
-            debugSet = true;
         }
         else if (!strcmp(argv[i], "--emit-asm"))
             ot = Module::Asm;
@@ -410,6 +409,8 @@ int main(int Argc, char *Argv[]) {
                 g->mathLib = Globals::Math_ISPC;
             else if (!strcmp(lib, "fast"))
                 g->mathLib = Globals::Math_ISPCFast;
+            else if (!strcmp(lib, "svml"))
+                g->mathLib = Globals::Math_SVML;
             else if (!strcmp(lib, "system"))
                 g->mathLib = Globals::Math_System;
             else {
@@ -496,12 +497,10 @@ int main(int Argc, char *Argv[]) {
         }
         else if (!strcmp(argv[i], "-O0")) {
             g->opt.level = 0;
-            optSet = true;
         }
         else if (!strcmp(argv[i], "-O") ||  !strcmp(argv[i], "-O1") ||
                  !strcmp(argv[i], "-O2") || !strcmp(argv[i], "-O3")) {
             g->opt.level = 1;
-            optSet = true;
         }
         else if (!strcmp(argv[i], "-"))
             ;
@@ -574,12 +573,6 @@ int main(int Argc, char *Argv[]) {
                 file = argv[i];
         }
     }
-
-    // If the user specified -g, then the default optimization level is 0.
-    // If -g wasn't specified, the default optimization level is 1 (full
-    // optimization).
-    if (debugSet && !optSet)
-        g->opt.level = 0;
 
     if (g->enableFuzzTest) {
         if (g->fuzzTestSeed == -1) {

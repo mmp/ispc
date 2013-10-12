@@ -313,6 +313,14 @@ define void @__masked_store_blend_i64(<WIDTH x i64>* nocapture %ptr,
   ret void
 }
 
+;; yuck.  We need declarations of these, even though we shouldnt ever
+;; actually generate calls to them for the NEON target...
+
+
+include(`svml.m4')
+svml_stubs(float,f,WIDTH)
+svml_stubs(double,d,WIDTH)
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; gather
 

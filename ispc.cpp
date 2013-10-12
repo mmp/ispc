@@ -126,7 +126,7 @@ lGetSystemISA() {
                 return "avx1.1-i32x8";
         }
         // Regular AVX
-        return "avx-i32x8";
+        return "avx1-i32x8";
     }
     else if ((info[2] & (1 << 19)) != 0)
         return "sse4-i32x4";
@@ -152,7 +152,7 @@ static const char *supportedCPUs[] = {
     , "core-avx-i", "core-avx2"
 #endif // LLVM 3.2+
 #if !defined (LLVM_3_1) && !defined(LLVM_3_2) && !defined(LLVM_3_3)
-    , "knl"
+    , "knl", "slm"
 #endif // LLVM3.4+
 };
 
@@ -199,13 +199,14 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic) :
                 isa = "avx1.1-i32x8";
             else if (!strcmp(cpu, "sandybridge") ||
                 !strcmp(cpu, "corei7-avx"))
-                isa = "avx-i32x8";
+                isa = "avx1-i32x8";
 #if !defined (LLVM_3_1) && !defined(LLVM_3_2) && !defined(LLVM_3_3)
             else if (!strcmp(cpu, "knl"))
                 isa = "avx512";
 #endif // LLVM3.4 +
             else if (!strcmp(cpu, "corei7") ||
-                     !strcmp(cpu, "penryn"))
+                     !strcmp(cpu, "penryn") ||
+                     !strcmp(cpu, "slm"))
                 isa = "sse4-i32x4";
             else
                 isa = "sse2-i32x4";
@@ -295,11 +296,13 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic) :
         this->m_isa = Target::SSE2;
         this->m_nativeVectorWidth = 4;
         this->m_vectorWidth = 4;
-#if defined(LLVM_3_1) || defined(LLVM_3_2) || defined(LLVM_3_3)
-        this->m_attributes = "+sse,+sse2,-sse3,-sse41,-sse42,-sse4a,-ssse3,-popcnt";
-#else // LLVM3_4+
-        this->m_attributes = "+sse,+sse2,-sse3,-sse4.1,-sse4.2,-sse4a,-ssse3,-popcnt";
+        this->m_attributes = "+sse,+sse2,-sse3,-sse4a,-ssse3,-popcnt"
+#if defined(LLVM_3_4)
+        ",-sse4.1,-sse4.2"
+#else
+        ",-sse41,-sse42"
 #endif
+        ;
         this->m_maskingIsFree = false;
         this->m_maskBitCount = 32;
     }
@@ -308,11 +311,13 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic) :
         this->m_isa = Target::SSE2;
         this->m_nativeVectorWidth = 4;
         this->m_vectorWidth = 8;
-#if defined(LLVM_3_1) || defined(LLVM_3_2) || defined(LLVM_3_3)
-        this->m_attributes = "+sse,+sse2,-sse3,-sse41,-sse42,-sse4a,-ssse3,-popcnt";
-#else // LLVM3_4+
-        this->m_attributes = "+sse,+sse2,-sse3,-sse4.1,-sse4.2,-sse4a,-ssse3,-popcnt";
+        this->m_attributes = "+sse,+sse2,-sse3,-sse4a,-ssse3,-popcnt"
+#if defined(LLVM_3_4)
+        ",-sse4.1,-sse4.2"
+#else
+        ",-sse41,-sse42"
 #endif
+        ;
         this->m_maskingIsFree = false;
         this->m_maskBitCount = 32;
     }
@@ -322,11 +327,13 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic) :
         this->m_nativeVectorWidth = 4;
         this->m_vectorWidth = 4;
         // TODO: why not sse42 and popcnt?
-#if defined(LLVM_3_1) || defined(LLVM_3_2) || defined(LLVM_3_3)
-        this->m_attributes = "+sse,+sse2,+sse3,+sse41,-sse42,-sse4a,+ssse3,-popcnt,+cmov";
-#else // LLVM3_4+
-        this->m_attributes = "+sse,+sse2,+sse3,+sse4.1,-sse4.2,-sse4a,+ssse3,-popcnt,+cmov";
+        this->m_attributes = "+sse,+sse2,+sse3,-sse4a,+ssse3,-popcnt,+cmov"
+#if defined(LLVM_3_4)
+        ",+sse4.1,-sse4.2"        
+#else
+        ",+sse41,-sse42"
 #endif
+        ;
         this->m_maskingIsFree = false;
         this->m_maskBitCount = 32;
     }
@@ -336,11 +343,13 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic) :
         this->m_isa = Target::SSE4;
         this->m_nativeVectorWidth = 4;
         this->m_vectorWidth = 8;
-#if defined(LLVM_3_1) || defined(LLVM_3_2) || defined(LLVM_3_3)
-        this->m_attributes = "+sse,+sse2,+sse3,+sse41,-sse42,-sse4a,+ssse3,-popcnt,+cmov";
-#else // LLVM3_4+
-        this->m_attributes = "+sse,+sse2,+sse3,+sse4.1,-sse4.2,-sse4a,+ssse3,-popcnt,+cmov";
+        this->m_attributes = "+sse,+sse2,+sse3,-sse4a,+ssse3,-popcnt,+cmov"
+#if defined(LLVM_3_4)
+        ",+sse4.1,-sse4.2"        
+#else
+        ",+sse41,-sse42"
 #endif
+        ;
         this->m_maskingIsFree = false;
         this->m_maskBitCount = 32;
     }
@@ -348,11 +357,13 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic) :
         this->m_isa = Target::SSE4;
         this->m_nativeVectorWidth = 16;
         this->m_vectorWidth = 16;
-#if defined(LLVM_3_1) || defined(LLVM_3_2) || defined(LLVM_3_3)
-        this->m_attributes = "+sse,+sse2,+sse3,+sse41,-sse42,-sse4a,+ssse3,-popcnt,+cmov";
-#else // LLVM3_4+
-        this->m_attributes = "+sse,+sse2,+sse3,+sse4.1,-sse4.2,-sse4a,+ssse3,-popcnt,+cmov";
+        this->m_attributes = "+sse,+sse2,+sse3,-sse4a,+ssse3,-popcnt,+cmov"
+#if defined(LLVM_3_4)
+        ",+sse4.1,-sse4.2"        
+#else
+        ",+sse41,-sse42"
 #endif
+        ;
         this->m_maskingIsFree = false;
         this->m_maskBitCount = 8;
     }
@@ -360,11 +371,13 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic) :
         this->m_isa = Target::SSE4;
         this->m_nativeVectorWidth = 8;
         this->m_vectorWidth = 8;
-#if defined(LLVM_3_1) || defined(LLVM_3_2) || defined(LLVM_3_3)
-        this->m_attributes = "+sse,+sse2,+sse3,+sse41,-sse42,-sse4a,+ssse3,-popcnt,+cmov";
-#else // LLVM3_4+
-        this->m_attributes = "+sse,+sse2,+sse3,+sse4.1,-sse4.2,-sse4a,+ssse3,-popcnt,+cmov";
+        this->m_attributes = "+sse,+sse2,+sse3,-sse4a,+ssse3,-popcnt,+cmov"
+#if defined(LLVM_3_4)
+        ",+sse4.1,-sse4.2"        
+#else
+        ",+sse41,-sse42"
 #endif
+        ;
         this->m_maskingIsFree = false;
         this->m_maskBitCount = 16;
     }
@@ -441,6 +454,15 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic) :
         this->m_maskingIsFree = false;
         this->m_maskBitCount = 32;
     }
+    else if (!strcasecmp(isa, "avx-i64x4") ||
+             !strcasecmp(isa, "avx1-i64x4")) {
+        this->m_isa = Target::AVX;
+        this->m_nativeVectorWidth = 8;  /* native vector width in terms of floats */
+        this->m_vectorWidth = 4;
+        this->m_attributes = "+avx,+popcnt,+cmov";
+        this->m_maskingIsFree = false;
+        this->m_maskBitCount = 64;
+    }
     else if (!strcasecmp(isa, "avx-x2") ||
              !strcasecmp(isa, "avx1-x2") ||
              !strcasecmp(isa, "avx1-i32x16")) {
@@ -456,7 +478,13 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic) :
         this->m_isa = Target::AVX11;
         this->m_nativeVectorWidth = 8;
         this->m_vectorWidth = 8;
-        this->m_attributes = "+avx,+popcnt,+cmov,+f16c,+rdrand";
+        this->m_attributes = "+avx,+popcnt,+cmov,+f16c"
+#if defined(LLVM_3_4)
+        ",+rdrnd"
+#else
+        ",+rdrand"
+#endif
+        ;
         this->m_maskingIsFree = false;
         this->m_maskBitCount = 32;
         this->m_hasHalf = true;
@@ -470,7 +498,13 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic) :
         this->m_isa = Target::AVX11;
         this->m_nativeVectorWidth = 8;
         this->m_vectorWidth = 16;
-        this->m_attributes = "+avx,+popcnt,+cmov,+f16c,+rdrand";
+        this->m_attributes = "+avx,+popcnt,+cmov,+f16c"
+#if defined(LLVM_3_4)
+        ",+rdrnd"
+#else
+        ",+rdrand"
+#endif
+        ;           
         this->m_maskingIsFree = false;
         this->m_maskBitCount = 32;
         this->m_hasHalf = true;
@@ -484,7 +518,12 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic) :
         this->m_isa = Target::AVX2;
         this->m_nativeVectorWidth = 8;
         this->m_vectorWidth = 8;
-        this->m_attributes = "+avx2,+popcnt,+cmov,+f16c,+rdrand"
+        this->m_attributes = "+avx2,+popcnt,+cmov,+f16c"
+#if defined(LLVM_3_4)
+        ",+rdrnd"
+#else
+        ",+rdrand"
+#endif
 #ifndef LLVM_3_1
             ",+fma"
 #endif // !LLVM_3_1
@@ -503,7 +542,12 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic) :
         this->m_isa = Target::AVX2;
         this->m_nativeVectorWidth = 16;
         this->m_vectorWidth = 16;
-        this->m_attributes = "+avx2,+popcnt,+cmov,+f16c,+rdrand"
+        this->m_attributes = "+avx2,+popcnt,+cmov,+f16c"
+#if defined(LLVM_3_4)
+        ",+rdrnd"
+#else
+        ",+rdrand"
+#endif
 #ifndef LLVM_3_1
             ",+fma"
 #endif // !LLVM_3_1
@@ -638,6 +682,7 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic) :
         // Initialize target-specific "target-feature" attribute.
         if (!m_attributes.empty()) {
             llvm::AttrBuilder attrBuilder;
+            attrBuilder.addAttribute("target-cpu", this->m_cpu);
             attrBuilder.addAttribute("target-features", this->m_attributes);
             this->m_tf_attributes = new llvm::AttributeSet(
                 llvm::AttributeSet::get(
@@ -687,14 +732,14 @@ Target::SupportedTargets() {
 #endif
         "sse2-i32x4, sse2-i32x8, "
         "sse4-i32x4, sse4-i32x8, sse4-i16x8, sse4-i8x16, "
-        "avx1-i32x8, avx1-i32x16, "
+        "avx1-i32x8, avx1-i32x16, avx1-i64x4, "
         "avx1.1-i32x8, avx1.1-i32x16, "
         "avx2-i32x8, avx2-i32x16, "
 #if !defined (LLVM_3_1) && !defined(LLVM_3_2) && !defined(LLVM_3_3)
         "avx512-i1x16"
 #endif
         "generic-x1, generic-x4, generic-x8, generic-x16, "
-            "generic-x32, generic-x64";
+        "generic-x32, generic-x64";
 }
 
 

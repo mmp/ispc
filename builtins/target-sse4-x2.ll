@@ -103,6 +103,19 @@ define <8 x float> @__sqrt_varying_float(<8 x float>) nounwind readonly alwaysin
 }
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; svml stuff
+
+include(`svml.m4')
+;; single precision
+svml_declare(float,f4,4)
+svml_define_x(float,f4,4,f,8)
+
+;; double precision
+svml_declare(double,2,2)
+svml_define_x(double,2,2,d,8)
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; float min/max
 
 declare <4 x float> @llvm.x86.sse.max.ps(<4 x float>, <4 x float>) nounwind readnone

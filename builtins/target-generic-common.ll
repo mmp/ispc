@@ -202,6 +202,16 @@ declare i64 @__count_trailing_zeros_i64(i64) nounwind readnone
 declare i32 @__count_leading_zeros_i32(i32) nounwind readnone
 declare i64 @__count_leading_zeros_i64(i64) nounwind readnone
 
+; FIXME: need either to wire these up to the 8-wide SVML entrypoints,
+; or, use the macro to call the 4-wide ones twice with our 8-wide
+; vectors...
+
+;; svml
+
+include(`svml.m4')
+svml_stubs(float,f,WIDTH)
+svml_stubs(double,d,WIDTH)
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; reductions
 
