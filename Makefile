@@ -143,7 +143,7 @@ else
     BUILD_VERSION:=$(GIT_REVISION)
 endif
 
-CXX=clang++
+CXX=g++
 OPT=-O2
 CXXFLAGS=$(OPT) $(LLVM_CXXFLAGS) -I. -Iobjs/ -I$(CLANG_INCLUDE)  \
 	$(LLVM_VERSION_DEF) \

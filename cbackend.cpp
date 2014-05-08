@@ -4980,10 +4980,15 @@ WriteCXXFile(llvm::Module *module, const char *fn, int vectorWidth,
 #if defined(LLVM_3_1) || defined(LLVM_3_2) || defined(LLVM_3_3)
     int flags = 0;
 #else
-    llvm::sys::fs::OpenFlags flags = llvm::sys::fs::F_None;
+    fprintf(stderr, "FIXME OPEN FLAGS\n");
+    abort();
+//CO    llvm::sys::fs::OpenFlags flags = llvm::sys::fs::F_None;
 #endif
 
     std::string error;
+    fprintf(stderr, "FIXME TOOL OUTOUT FILE AND BEYOND\n");
+    abort();
+#if 0
     llvm::tool_output_file *of = new llvm::tool_output_file(fn, error, flags);
     if (error.size()) {
         fprintf(stderr, "Error opening output file \"%s\".\n", fn);
@@ -5009,6 +5014,7 @@ WriteCXXFile(llvm::Module *module, const char *fn, int vectorWidth,
 //CO    pm.add(llvm::createVerifierPass());
 
     pm.run(*module);
+#endif // #if 0
 
     return true;
 }
