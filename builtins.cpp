@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2010-2013, Intel Corporation
+  Copyright (c) 2010-2014, Intel Corporation
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -66,7 +66,11 @@
   #include <llvm/IR/Intrinsics.h>
   #include <llvm/IR/DerivedTypes.h>
 #endif
-#include <llvm/Linker.h>
+#if defined(LLVM_3_5)
+    #include <llvm/Linker/Linker.h>
+#else
+    #include <llvm/Linker.h>
+#endif
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/ADT/Triple.h>
 #include <llvm/Support/MemoryBuffer.h>
@@ -488,14 +492,25 @@ lSetInternalFunctions(llvm::Module *module) {
         "__num_cores",
         "__packed_load_active",
         "__packed_store_active",
+        "__packed_store_active2",
+        "__padds_vi8",
+        "__padds_vi16",
+        "__paddus_vi8",
+        "__paddus_vi16",
         "__popcnt_int32",
         "__popcnt_int64",
         "__prefetch_read_uniform_1",
         "__prefetch_read_uniform_2",
         "__prefetch_read_uniform_3",
         "__prefetch_read_uniform_nt",
+        "__psubs_vi8",
+        "__psubs_vi16",
+        "__psubus_vi8",
+        "__psubus_vi16",
         "__rcp_uniform_float",
         "__rcp_varying_float",
+        "__rcp_uniform_double",
+        "__rcp_varying_double",
         "__rdrand_i16",
         "__rdrand_i32",
         "__rdrand_i64",
@@ -533,9 +548,17 @@ lSetInternalFunctions(llvm::Module *module) {
         "__round_varying_float",
         "__rsqrt_uniform_float",
         "__rsqrt_varying_float",
+        "__rsqrt_uniform_double",
+        "__rsqrt_varying_double",
         "__set_system_isa",
         "__sext_uniform_bool",
         "__sext_varying_bool",
+        "__shift_double",
+        "__shift_float",
+        "__shift_i16",
+        "__shift_i32",
+        "__shift_i64",
+        "__shift_i8",
         "__shuffle2_double",
         "__shuffle2_float",
         "__shuffle2_i16",
@@ -605,12 +628,56 @@ lSetInternalFunctions(llvm::Module *module) {
         "__svml_expf",
         "__svml_logf",
         "__svml_powf",
+        "__log_uniform_float",
+        "__log_varying_float",
+        "__exp_uniform_float",
+        "__exp_varying_float",
+        "__pow_uniform_float",
+        "__pow_varying_float",
+        "__log_uniform_double",
+        "__log_varying_double",
+        "__exp_uniform_double",
+        "__exp_varying_double",
+        "__pow_uniform_double",
+        "__pow_varying_double",
+        "__sin_varying_float",
+        "__asin_varying_float",
+        "__cos_varying_float",
+        "__acos_varying_float",
+        "__sincos_varying_float",
+        "__tan_varying_float",
+        "__atan_varying_float",
+        "__atan2_varying_float",
+        "__sin_uniform_float",
+        "__asin_uniform_float",
+        "__cos_uniform_float",
+        "__acos_uniform_float",
+        "__sincos_uniform_float",
+        "__tan_uniform_float",
+        "__atan_uniform_float",
+        "__atan2_uniform_float",
+        "__sin_varying_double",
+        "__asin_varying_double",
+        "__cos_varying_double",
+        "__acos_varying_double",
+        "__sincos_varying_double",
+        "__tan_varying_double",
+        "__atan_varying_double",
+        "__atan2_varying_double",
+        "__sin_uniform_double",
+        "__asin_uniform_double",
+        "__cos_uniform_double",
+        "__acos_uniform_double",
+        "__sincos_uniform_double",
+        "__tan_uniform_double",
+        "__atan_uniform_double",
+        "__atan2_uniform_double",
         "__undef_uniform",
         "__undef_varying",
         "__vec4_add_float",
         "__vec4_add_int32",
         "__vselect_float",
-        "__vselect_i32",
+        "__vselect_i32"
     };
 
     int count = sizeof(names) / sizeof(names[0]);
@@ -636,13 +703,21 @@ lSetInternalFunctions(llvm::Module *module) {
 void
 AddBitcodeToModule(const unsigned char *bitcode, int length,
                    llvm::Module *module, SymbolTable *symbolTable) {
-    std::string bcErr;
     llvm::StringRef sb = llvm::StringRef((char *)bitcode, length);
     llvm::MemoryBuffer *bcBuf = llvm::MemoryBuffer::getMemBuffer(sb);
+#if defined(LLVM_3_5)
+    llvm::ErrorOr<llvm::Module *> ModuleOrErr = llvm::parseBitcodeFile(bcBuf, *g->ctx);
+    if (llvm::error_code EC = ModuleOrErr.getError())
+        Error(SourcePos(), "Error parsing stdlib bitcode: %s", EC.message().c_str());
+    else {
+        llvm::Module *bcModule = ModuleOrErr.get();
+#else
+    std::string bcErr;
     llvm::Module *bcModule = llvm::ParseBitcodeFile(bcBuf, *g->ctx, &bcErr);
     if (!bcModule)
         Error(SourcePos(), "Error parsing stdlib bitcode: %s", bcErr.c_str());
     else {
+#endif
         // FIXME: this feels like a bad idea, but the issue is that when we
         // set the llvm::Module's target triple in the ispc Module::Module
         // constructor, we start by calling llvm::sys::getHostTriple() (and
@@ -687,6 +762,17 @@ AddBitcodeToModule(const unsigned char *bitcode, int length,
             // architecture and investigate what happened.
             // Generally we allow library DataLayout to be subset of module
             // DataLayout or library DataLayout to be empty.
+#if defined(LLVM_3_5)
+            if (!VerifyDataLayoutCompatibility(module->getDataLayoutStr(),
+                                               bcModule->getDataLayoutStr())) {
+              Warning(SourcePos(), "Module DataLayout is incompatible with "
+                      "library DataLayout:\n"
+                      "Module  DL: %s\n"
+                      "Library DL: %s\n",
+                      module->getDataLayoutStr().c_str(),
+                      bcModule->getDataLayoutStr().c_str());
+            }
+#else
             if (!VerifyDataLayoutCompatibility(module->getDataLayout(),
                                                bcModule->getDataLayout())) {
               Warning(SourcePos(), "Module DataLayout is incompatible with "
@@ -696,6 +782,7 @@ AddBitcodeToModule(const unsigned char *bitcode, int length,
                       module->getDataLayout().c_str(),
                       bcModule->getDataLayout().c_str());
             }
+#endif
         }
 
         bcModule->setTargetTriple(mTriple.str());
@@ -936,11 +1023,31 @@ DefineStdlib(SymbolTable *symbolTable, llvm::LLVMContext *ctx, llvm::Module *mod
     case Target::AVX: {
         switch (g->target->getVectorWidth()) {
         case 4:
-            if (runtime32) {
-                EXPORT_MODULE(builtins_bitcode_avx1_i64x4_32bit);
-            }
-            else {
-                EXPORT_MODULE(builtins_bitcode_avx1_i64x4_64bit);
+            if (g->target->getDataTypeWidth() == 32) {
+                // Note here that for avx1-i32x4 we are using bitcode file for
+                // sse4-i32x4. This is intentional and good enough.
+                // AVX target implies appropriate target-feature attrbute,
+                // which forces LLVM to generate AVX code, even for SSE4
+                // intrinsics. Except that the only "missing" feature in sse4
+                // target is implemenation of __masked_[store|load]_[i32|i64]
+                // using maskmov instruction. But it's not very popular
+                // intrinsics, so we assume the implementation to be good
+                // enough at the moment.
+                if (runtime32) {
+                    EXPORT_MODULE(builtins_bitcode_sse4_32bit);
+                }
+                else {
+                    EXPORT_MODULE(builtins_bitcode_sse4_64bit);
+                }
+            } else if (g->target->getDataTypeWidth() == 64) {
+                if (runtime32) {
+                    EXPORT_MODULE(builtins_bitcode_avx1_i64x4_32bit);
+                }
+                else {
+                    EXPORT_MODULE(builtins_bitcode_avx1_i64x4_64bit);
+                }
+            } else {
+                FATAL("logic error in DefineStdlib");
             }
             break;
         case 8:
@@ -966,6 +1073,14 @@ DefineStdlib(SymbolTable *symbolTable, llvm::LLVMContext *ctx, llvm::Module *mod
     }
     case Target::AVX11: {
         switch (g->target->getVectorWidth()) {
+        case 4:
+            if (runtime32) {
+                EXPORT_MODULE(builtins_bitcode_avx11_i64x4_32bit);
+            }
+            else {
+                EXPORT_MODULE(builtins_bitcode_avx11_i64x4_64bit);
+            }
+            break;
         case 8:
             if (runtime32) {
                 EXPORT_MODULE(builtins_bitcode_avx11_32bit);
@@ -989,6 +1104,14 @@ DefineStdlib(SymbolTable *symbolTable, llvm::LLVMContext *ctx, llvm::Module *mod
     }
     case Target::AVX2: {
         switch (g->target->getVectorWidth()) {
+        case 4:
+            if (runtime32) {
+                EXPORT_MODULE(builtins_bitcode_avx2_i64x4_32bit);
+            }
+            else {
+                EXPORT_MODULE(builtins_bitcode_avx2_i64x4_64bit);
+            }
+            break;
         case 8:
             if (runtime32) {
                 EXPORT_MODULE(builtins_bitcode_avx2_32bit);
@@ -1109,6 +1232,12 @@ DefineStdlib(SymbolTable *symbolTable, llvm::LLVMContext *ctx, llvm::Module *mod
     lDefineConstantInt("__have_native_rand", g->target->hasRand(), module,
                        symbolTable);
     lDefineConstantInt("__have_native_transcendentals", g->target->hasTranscendentals(),
+                       module, symbolTable);
+    lDefineConstantInt("__have_native_trigonometry", g->target->hasTrigonometry(),
+                       module, symbolTable);
+    lDefineConstantInt("__have_native_rsqrtd", g->target->hasRsqrtd(),
+                       module, symbolTable);
+    lDefineConstantInt("__have_native_rcpd", g->target->hasRcpd(),
                        module, symbolTable);
 
     if (g->forceAlignment != -1) {

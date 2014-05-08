@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2011-2013, Intel Corporation
+  Copyright (c) 2011-2014, Intel Corporation
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -69,10 +69,16 @@
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/PassManager.h>
-#include <llvm/Analysis/Verifier.h>
-#include <llvm/Support/CFG.h>
+#if defined(LLVM_3_5)
+    #include <llvm/IR/Verifier.h>
+    #include <llvm/IR/IRPrintingPasses.h>
+    #include <llvm/IR/CFG.h>
+#else
+    #include <llvm/Analysis/Verifier.h>
+    #include <llvm/Assembly/PrintModulePass.h>
+    #include <llvm/Support/CFG.h>
+#endif
 #include <llvm/Support/ToolOutputFile.h>
-#include <llvm/Assembly/PrintModulePass.h>
 
 Function::Function(Symbol *s, Stmt *c) {
     sym = s;
@@ -132,9 +138,28 @@ Function::Function(Symbol *s, Stmt *c) {
         Assert(taskIndexSym);
         taskCountSym = m->symbolTable->LookupVariable("taskCount");
         Assert(taskCountSym);
+
+        taskIndexSym0 = m->symbolTable->LookupVariable("taskIndex0");
+        Assert(taskIndexSym0);
+        taskIndexSym1 = m->symbolTable->LookupVariable("taskIndex1");
+        Assert(taskIndexSym1);
+        taskIndexSym2 = m->symbolTable->LookupVariable("taskIndex2");
+        Assert(taskIndexSym2);
+
+
+        taskCountSym0 = m->symbolTable->LookupVariable("taskCount0");
+        Assert(taskCountSym0);
+        taskCountSym1 = m->symbolTable->LookupVariable("taskCount1");
+        Assert(taskCountSym1);
+        taskCountSym2 = m->symbolTable->LookupVariable("taskCount2");
+        Assert(taskCountSym2);
     }
     else
+    {
         threadIndexSym = threadCountSym = taskIndexSym = taskCountSym = NULL;
+        taskIndexSym0 = taskIndexSym1 = taskIndexSym2 = NULL;
+        taskCountSym0 = taskCountSym1 = taskCountSym2 = NULL;
+    }
 }
 
 
@@ -216,7 +241,7 @@ Function::emitCode(FunctionEmitContext *ctx, llvm::Function *function,
     const FunctionType *type = CastType<FunctionType>(sym->type);
     Assert(type != NULL);
     if (type->isTask == true) {
-        // For tasks, we there should always be three parmeters: the
+        // For tasks, there should always be three parameters: the
         // pointer to the structure that holds all of the arguments, the
         // thread index, and the thread count variables.
         llvm::Function::arg_iterator argIter = function->arg_begin();
@@ -225,6 +250,12 @@ Function::emitCode(FunctionEmitContext *ctx, llvm::Function *function,
         llvm::Value *threadCount = argIter++;
         llvm::Value *taskIndex = argIter++;
         llvm::Value *taskCount = argIter++;
+        llvm::Value *taskIndex0 = argIter++;
+        llvm::Value *taskIndex1 = argIter++;
+        llvm::Value *taskIndex2 = argIter++;
+        llvm::Value *taskCount0 = argIter++;
+        llvm::Value *taskCount1 = argIter++;
+        llvm::Value *taskCount2 = argIter++;
 
         // Copy the function parameter values from the structure into local
         // storage
@@ -256,6 +287,20 @@ Function::emitCode(FunctionEmitContext *ctx, llvm::Function *function,
 
         taskCountSym->storagePtr = ctx->AllocaInst(LLVMTypes::Int32Type, "taskCount");
         ctx->StoreInst(taskCount, taskCountSym->storagePtr);
+        
+        taskIndexSym0->storagePtr = ctx->AllocaInst(LLVMTypes::Int32Type, "taskIndex0");
+        ctx->StoreInst(taskIndex0, taskIndexSym0->storagePtr);
+        taskIndexSym1->storagePtr = ctx->AllocaInst(LLVMTypes::Int32Type, "taskIndex1");
+        ctx->StoreInst(taskIndex1, taskIndexSym1->storagePtr);
+        taskIndexSym2->storagePtr = ctx->AllocaInst(LLVMTypes::Int32Type, "taskIndex2");
+        ctx->StoreInst(taskIndex2, taskIndexSym2->storagePtr);
+        
+        taskCountSym0->storagePtr = ctx->AllocaInst(LLVMTypes::Int32Type, "taskCount0");
+        ctx->StoreInst(taskCount0, taskCountSym0->storagePtr);
+        taskCountSym1->storagePtr = ctx->AllocaInst(LLVMTypes::Int32Type, "taskCount1");
+        ctx->StoreInst(taskCount1, taskCountSym1->storagePtr);
+        taskCountSym2->storagePtr = ctx->AllocaInst(LLVMTypes::Int32Type, "taskCount2");
+        ctx->StoreInst(taskCount2, taskCountSym2->storagePtr);
     }
     else {
         // Regular, non-task function
@@ -382,7 +427,7 @@ Function::emitCode(FunctionEmitContext *ctx, llvm::Function *function,
         // issue a warning.  Also need to warn if it's the entry block for
         // the function (in which case it will not have predeccesors but is
         // still reachable.)
-        if (Type::Equal(type->GetReturnType(), AtomicType::Void) == false &&
+        if (type->GetReturnType()->IsVoidType() == false &&
             (pred_begin(ec.bblock) != pred_end(ec.bblock) || (ec.bblock == entryBBlock)))
             Warning(sym->pos, "Missing return statement in function returning \"%s\".",
                     type->rType->GetString().c_str());
@@ -433,7 +478,11 @@ Function::GenerateIR() {
     }
 
     if (m->errorCount == 0) {
+#if defined (LLVM_3_5)
+        if (llvm::verifyFunction(*function) == true) {
+#else
         if (llvm::verifyFunction(*function, llvm::ReturnStatusAction) == true) {
+#endif
             if (g->debugPrint)
                 function->dump();
             FATAL("Function verificication failed");
@@ -458,7 +507,14 @@ Function::GenerateIR() {
 #else
                 appFunction->setDoesNotThrow();
 #endif
-
+                // We should iterate from 1 because zero parameter is return.
+                // We should iterate till getNumParams instead of getNumParams+1 because new
+                // function is export function and doesn't contain the last parameter "mask".
+                for (int i = 1; i < function->getFunctionType()->getNumParams(); i++) {
+                    if (function->doesNotAlias(i)) {
+                        appFunction->setDoesNotAlias(i);
+                    }
+                }
                 g->target->markFuncWithTargetAttr(appFunction);
 
                 if (appFunction->getName() != functionName) {
@@ -472,8 +528,12 @@ Function::GenerateIR() {
                     emitCode(&ec, appFunction, firstStmtPos);
                     if (m->errorCount == 0) {
                         sym->exportedFunction = appFunction;
+#if defined(LLVM_3_5)
+                        if (llvm::verifyFunction(*appFunction) == true) {
+#else
                         if (llvm::verifyFunction(*appFunction,
                                                  llvm::ReturnStatusAction) == true) {
+#endif
                             if (g->debugPrint)
                                 appFunction->dump();
                             FATAL("Function verificication failed");

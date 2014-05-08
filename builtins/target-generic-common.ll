@@ -1,4 +1,4 @@
-;;  Copyright (c) 2010-2012, Intel Corporation
+;;  Copyright (c) 2010-2014, Intel Corporation
 ;;  All rights reserved.
 ;;
 ;;  Redistribution and use in source and binary forms, with or without
@@ -79,6 +79,13 @@ declare <WIDTH x float> @__rotate_float(<WIDTH x float>, i32) nounwind readnone
 declare <WIDTH x i32> @__rotate_i32(<WIDTH x i32>, i32) nounwind readnone
 declare <WIDTH x double> @__rotate_double(<WIDTH x double>, i32) nounwind readnone
 declare <WIDTH x i64> @__rotate_i64(<WIDTH x i64>, i32) nounwind readnone
+
+declare <WIDTH x i8> @__shift_i8(<WIDTH x i8>, i32) nounwind readnone
+declare <WIDTH x i16> @__shift_i16(<WIDTH x i16>, i32) nounwind readnone
+declare <WIDTH x float> @__shift_float(<WIDTH x float>, i32) nounwind readnone
+declare <WIDTH x i32> @__shift_i32(<WIDTH x i32>, i32) nounwind readnone
+declare <WIDTH x double> @__shift_double(<WIDTH x double>, i32) nounwind readnone
+declare <WIDTH x i64> @__shift_i64(<WIDTH x i64>, i32) nounwind readnone
 
 declare <WIDTH x i8> @__shuffle_i8(<WIDTH x i8>, <WIDTH x i32>) nounwind readnone
 declare <WIDTH x i8> @__shuffle2_i8(<WIDTH x i8>, <WIDTH x i8>,
@@ -187,6 +194,7 @@ declare float @__rcp_uniform_float(float) nounwind readnone
 declare float @__sqrt_uniform_float(float) nounwind readnone 
 declare <WIDTH x float> @__rcp_varying_float(<WIDTH x float>) nounwind readnone 
 declare <WIDTH x float> @__rsqrt_varying_float(<WIDTH x float>) nounwind readnone 
+
 declare <WIDTH x float> @__sqrt_varying_float(<WIDTH x float>) nounwind readnone 
 
 declare double @__sqrt_uniform_double(double) nounwind readnone
@@ -364,6 +372,8 @@ declare i32 @__packed_load_active(i32 * nocapture, <WIDTH x i32> * nocapture,
                                   <WIDTH x i1>) nounwind
 declare i32 @__packed_store_active(i32 * nocapture, <WIDTH x i32> %vals,
                                    <WIDTH x i1>) nounwind
+declare i32 @__packed_store_active2(i32 * nocapture, <WIDTH x i32> %vals,
+                                   <WIDTH x i1>) nounwind
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -379,3 +389,11 @@ declare void @__prefetch_read_uniform_nt(i8 * nocapture) nounwind
 
 define_avgs()
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; reciprocals in double precision, if supported
+
+rsqrtd_decl()
+rcpd_decl()
+
+transcendetals_decl()
+trigonometry_decl()

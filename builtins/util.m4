@@ -1,4 +1,4 @@
-;;  Copyright (c) 2010-2013, Intel Corporation
+;;  Copyright (c) 2010-2014, Intel Corporation
 ;;  All rights reserved.
 ;;
 ;;  Redistribution and use in source and binary forms, with or without
@@ -46,6 +46,416 @@ define(`MASK_HIGH_BIT_ON',
 `ifelse(WIDTH, `64', `-9223372036854775808',
         WIDTH, `32', `2147483648',
                      `eval(1<<(WIDTH-1))')')
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; vector convertation utilities
+;; convert vector of one width into vector of other width
+;;
+;; $1: vector element type
+;; $2: vector of the first width
+;; $3: vector of the second width
+
+
+define(`convert1to8', `
+  $3 = shufflevector <1 x $1> $2, <1 x $1> undef,
+  <8 x i32> <i32 0, i32 undef, i32 undef, i32 undef, 
+             i32 undef, i32 undef, i32 undef, i32 undef>
+')
+
+
+define(`convert1to16', `
+  $3 = shufflevector <1 x $1> $2, <1 x $1> undef,
+  <16 x i32> <i32 0, i32 undef, i32 undef, i32 undef, 
+              i32 undef, i32 undef, i32 undef, i32 undef,
+              i32 undef, i32 undef, i32 undef, i32 undef,
+              i32 undef, i32 undef, i32 undef, i32 undef>
+')
+
+define(`convert4to8', `
+  $3 = shufflevector <4 x $1> $2, <4 x $1> undef,
+  <8 x i32> <i32 0, i32 1, i32 2, i32 3, 
+             i32 undef, i32 undef, i32 undef, i32 undef>
+')
+
+define(`convert4to16', `
+  $3 = shufflevector <4 x $1> $2, <4 x $1> undef,
+  <16 x i32> <i32 0, i32 1, i32 2, i32 3, 
+              i32 undef, i32 undef, i32 undef, i32 undef,
+              i32 undef, i32 undef, i32 undef, i32 undef,
+              i32 undef, i32 undef, i32 undef, i32 undef>
+')
+
+define(`convert8to16', `
+  $3 = shufflevector <8 x $1> $2, <8 x $1> undef,
+  <16 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7,
+              i32 undef, i32 undef, i32 undef, i32 undef,
+              i32 undef, i32 undef, i32 undef, i32 undef>
+')
+
+define(`convert4to32', `
+  $3 = shufflevector <4 x $1> $2, <4 x $1> undef,
+  <32 x i32> <i32 0, i32 1, i32 2, i32 3, 
+              i32 undef, i32 undef, i32 undef, i32 undef,
+              i32 undef, i32 undef, i32 undef, i32 undef,
+              i32 undef, i32 undef, i32 undef, i32 undef,
+              i32 undef, i32 undef, i32 undef, i32 undef,
+              i32 undef, i32 undef, i32 undef, i32 undef,
+              i32 undef, i32 undef, i32 undef, i32 undef,
+              i32 undef, i32 undef, i32 undef, i32 undef>
+')
+
+define(`convert8to32', `
+  $3 = shufflevector <4 x $1> $2, <4 x $1> undef,
+  <32 x i32> <i32 0, i32 1, i32 2, i32 3, 
+              i32 4, i32 5, i32 6, i32 7,
+              i32 undef, i32 undef, i32 undef, i32 undef,
+              i32 undef, i32 undef, i32 undef, i32 undef,
+              i32 undef, i32 undef, i32 undef, i32 undef,
+              i32 undef, i32 undef, i32 undef, i32 undef,
+              i32 undef, i32 undef, i32 undef, i32 undef,
+              i32 undef, i32 undef, i32 undef, i32 undef>
+')
+
+define(`convert16to32', `
+  $3 = shufflevector <4 x $1> $2, <4 x $1> undef,
+  <32 x i32> <i32  0, i32 1,  i32  2, i32  3, 
+              i32  4, i32 5,  i32  6, i32  7,
+              i32  8, i32 9,  i32 10, i32 11,
+              i32 12, i32 13, i32 14, i32 15 
+              i32 undef, i32 undef, i32 undef, i32 undef,
+              i32 undef, i32 undef, i32 undef, i32 undef,
+              i32 undef, i32 undef, i32 undef, i32 undef,
+              i32 undef, i32 undef, i32 undef, i32 undef>
+')
+
+define(`convert8to1', `
+  $3 = shufflevector <8 x $1> $2, <8 x $1> undef,
+    <1 x i32> <i32 0>
+')
+
+
+define(`convert16to1', `
+  $3 = shufflevector <16 x $1> $2, <16 x $1> undef,
+    <1 x i32> <i32 0>
+')
+
+define(`convert8to4', `
+  $3 = shufflevector <8 x $1> $2, <8 x $1> undef,
+    <4 x i32> <i32 0, i32 1, i32 2, i32 3>
+')
+
+
+define(`convert16to4', `
+  $3 = shufflevector <16 x $1> $2, <16 x $1> undef,
+    <4 x i32> <i32 0, i32 1, i32 2, i32 3>
+')
+
+define(`convert16to8', `
+  $3 = shufflevector <16 x $1> $2, <16 x $1> undef,
+  <8 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7>
+')
+
+define(`convert32to4', `
+  $3 = shufflevector <32 x $1> $2, <32 x $1> undef,
+    <4 x i32> <i32 0, i32 1, i32 2, i32 3>
+')
+
+define(`convert32to8', `
+  $3 = shufflevector <32 x $1> $2, <32 x $1> undef,
+    <8 x i32> <i32 0, i32 1, i32 2, i32 3>
+')
+
+define(`convert32to16', `
+  $3 = shufflevector <32 x $1> $2, <32 x $1> undef,
+    <16 x i32> <i32 0, i32 1, i32 2, i32 3>
+')
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;saturation arithmetic
+ 
+define(`saturation_arithmetic',
+`ifelse(WIDTH,  `4', `saturation_arithmetic_vec4()', 
+        WIDTH,  `8', `saturation_arithmetic_vec8()',
+        WIDTH, `16', `saturation_arithmetic_vec16() ',
+                     `errprint(`ERROR: saturation_arithmetic() macro called with unsupported width = 'WIDTH
+)
+                      m4exit(`1')')
+')
+
+;; create vector constant. Used by saturation_arithmetic_novec_universal below.
+
+define(`const_vector', `
+ifelse(WIDTH,  `4', `<$1 $2, $1 $2, $1 $2, $1 $2>', 
+       WIDTH,  `8', `<$1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2>',
+       WIDTH, `16', `<$1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2,
+                      $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2>',
+       WIDTH, `32', `<$1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2,
+                      $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2,
+                      $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2,
+                      $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2>',
+       WIDTH, `64', `<$1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2,
+                       $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2,
+                       $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2,
+                       $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2,
+                       $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2,
+                       $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2,
+                       $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2,
+                       $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2, $1 $2>',
+                        `<$1 $2>')')
+                        
+;; utility function used by saturation_arithmetic_novec below.  This shouldn't be called by
+;; target .ll files directly.
+;; $1: {add,sub} (used in constructing function names)
+                        
+define(`saturation_arithmetic_novec_universal', `
+define <WIDTH x i8> @__p$1s_vi8(<WIDTH x i8>, <WIDTH x i8>) {
+  %v0_i16 = sext <WIDTH x i8> %0 to <WIDTH x i16>
+  %v1_i16 = sext <WIDTH x i8> %1 to <WIDTH x i16>
+  %res = $1 <WIDTH x i16> %v0_i16, %v1_i16
+  %over_mask = icmp sgt <WIDTH x i16> %res, const_vector(i16, 127)
+  %over_res = select <WIDTH x i1> %over_mask, <WIDTH x i16> const_vector(i16, 127), <WIDTH x i16> %res
+  %under_mask = icmp slt <WIDTH x i16> %res, const_vector(i16, -128)
+  %ret_i16 = select <WIDTH x i1> %under_mask, <WIDTH x i16> const_vector(i16, -128), <WIDTH x i16> %over_res
+  %ret = trunc <WIDTH x i16> %ret_i16 to <WIDTH x i8>
+  ret <WIDTH x i8> %ret
+}
+
+define <WIDTH x i16> @__p$1s_vi16(<WIDTH x i16>, <WIDTH x i16>) {
+  %v0_i32 = sext <WIDTH x i16> %0 to <WIDTH x i32>
+  %v1_i32 = sext <WIDTH x i16> %1 to <WIDTH x i32>
+  %res = $1 <WIDTH x i32> %v0_i32, %v1_i32
+  %over_mask = icmp sgt <WIDTH x i32> %res, const_vector(i32, 32767)
+  %over_res = select <WIDTH x i1> %over_mask, <WIDTH x i32> const_vector(i32, 32767), <WIDTH x i32> %res
+  %under_mask = icmp slt <WIDTH x i32> %res, const_vector(i32, -32768)
+  %ret_i32 = select <WIDTH x i1> %under_mask, <WIDTH x i32> const_vector(i32, -32768), <WIDTH x i32> %over_res
+  %ret = trunc <WIDTH x i32> %ret_i32 to <WIDTH x i16>
+  ret <WIDTH x i16> %ret
+}
+
+define <WIDTH x i8> @__p$1us_vi8(<WIDTH x i8>, <WIDTH x i8>) {
+  %v0_i16 = zext <WIDTH x i8> %0 to <WIDTH x i16>
+  %v1_i16 = zext <WIDTH x i8> %1 to <WIDTH x i16>
+  %res = $1 <WIDTH x i16> %v0_i16, %v1_i16
+  %over_mask = icmp ugt <WIDTH x i16> %res, const_vector(i16, 255)
+  %over_res = select <WIDTH x i1> %over_mask, <WIDTH x i16> const_vector(i16, 255), <WIDTH x i16> %res
+  %under_mask = icmp slt <WIDTH x i16> %res, const_vector(i16, 0)
+  %ret_i16 = select <WIDTH x i1> %under_mask, <WIDTH x i16> const_vector(i16, 0), <WIDTH x i16> %over_res
+  %ret = trunc <WIDTH x i16> %ret_i16 to <WIDTH x i8>
+  ret <WIDTH x i8> %ret
+}
+
+define <WIDTH x i16> @__p$1us_vi16(<WIDTH x i16>, <WIDTH x i16>) {
+  %v0_i32 = zext <WIDTH x i16> %0 to <WIDTH x i32>
+  %v1_i32 = zext <WIDTH x i16> %1 to <WIDTH x i32>
+  %res = $1 <WIDTH x i32> %v0_i32, %v1_i32
+  %over_mask = icmp ugt <WIDTH x i32> %res, const_vector(i32, 65535)
+  %over_res = select <WIDTH x i1> %over_mask, <WIDTH x i32> const_vector(i32, 65535), <WIDTH x i32> %res
+  %under_mask = icmp slt <WIDTH x i32> %res, const_vector(i32, 0)
+  %ret_i32 = select <WIDTH x i1> %under_mask, <WIDTH x i32> const_vector(i32, 0), <WIDTH x i32> %over_res
+  %ret = trunc <WIDTH x i32> %ret_i32 to <WIDTH x i16>
+  ret <WIDTH x i16> %ret
+}
+')
+
+;; implementation for targets which doesn't have h/w instructions
+
+define(`saturation_arithmetic_novec', `
+saturation_arithmetic_novec_universal(sub)
+saturation_arithmetic_novec_universal(add)
+')
+
+;;4-wide vector saturation arithmetic
+
+define(`saturation_arithmetic_vec4', `
+declare <16 x i8> @llvm.x86.sse2.padds.b(<16 x i8>, <16 x i8>) nounwind readnone
+define <4 x i8> @__padds_vi8(<4 x i8>, <4 x i8>) {
+  convert4to16(i8, %0, %v0)
+  convert4to16(i8, %1, %v1)    
+  %r16 = call <16 x i8> @llvm.x86.sse2.padds.b(<16 x i8> %v0, <16 x i8> %v1)
+  convert16to4(i8, %r16, %r)
+  ret <4 x i8> %r
+}
+
+declare <8 x i16> @llvm.x86.sse2.padds.w(<8 x i16>, <8 x i16>) nounwind readnone
+define <4 x i16> @__padds_vi16(<4 x i16>, <4 x i16>) {
+  convert4to8(i16, %0, %v0)
+  convert4to8(i16, %1, %v1)
+  %r16 = call <8 x i16> @llvm.x86.sse2.padds.w(<8 x i16> %v0, <8 x i16> %v1)
+  convert8to4(i16, %r16, %r)
+  ret <4 x i16> %r
+}
+
+declare <16 x i8> @llvm.x86.sse2.paddus.b(<16 x i8>, <16 x i8>) nounwind readnone
+define <4 x i8> @__paddus_vi8(<4 x i8>, <4 x i8>) {
+  convert4to16(i8, %0, %v0)
+  convert4to16(i8, %1, %v1)
+  %r16 = call <16 x i8> @llvm.x86.sse2.paddus.b(<16 x i8> %v0, <16 x i8> %v1)
+  convert16to4(i8, %r16, %r)
+  ret <4 x i8> %r
+}
+
+declare <8 x i16> @llvm.x86.sse2.paddus.w(<8 x i16>, <8 x i16>) nounwind readnone
+define <4 x i16> @__paddus_vi16(<4 x i16>, <4 x i16>) {
+  convert4to8(i16, %0, %v0)
+  convert4to8(i16, %1, %v1)
+  %r16 = call <8 x i16> @llvm.x86.sse2.paddus.w(<8 x i16> %v0, <8 x i16> %v1)
+  convert8to4(i16, %r16, %r)  
+  ret <4 x i16> %r
+}
+
+declare <16 x i8> @llvm.x86.sse2.psubs.b(<16 x i8>, <16 x i8>) nounwind readnone
+define <4 x i8> @__psubs_vi8(<4 x i8>, <4 x i8>) {
+  convert4to16(i8, %0, %v0)
+  convert4to16(i8, %1, %v1)
+  %r16 = call <16 x i8> @llvm.x86.sse2.psubs.b(<16 x i8> %v0, <16 x i8> %v1)
+  convert16to4(i8, %r16, %r)
+  ret <4 x i8> %r
+}
+
+declare <8 x i16> @llvm.x86.sse2.psubs.w(<8 x i16>, <8 x i16>) nounwind readnone
+define <4 x i16> @__psubs_vi16(<4 x i16>, <4 x i16>) {
+  convert4to8(i16, %0, %v0)
+  convert4to8(i16, %1, %v1)
+  %r16 = call <8 x i16> @llvm.x86.sse2.psubs.w(<8 x i16> %v0, <8 x i16> %v1)
+  convert8to4(i16, %r16, %r)
+  ret <4 x i16> %r
+}
+
+declare <16 x i8> @llvm.x86.sse2.psubus.b(<16 x i8>, <16 x i8>) nounwind readnone
+define <4 x i8> @__psubus_vi8(<4 x i8>, <4 x i8>) {
+  convert4to16(i8, %0, %v0)
+  convert4to16(i8, %1, %v1)
+  %r16 = call <16 x i8> @llvm.x86.sse2.psubus.b(<16 x i8> %v0, <16 x i8> %v1)
+  convert16to4(i8, %r16, %r)
+  ret <4 x i8> %r
+}
+
+declare <8 x i16> @llvm.x86.sse2.psubus.w(<8 x i16>, <8 x i16>) nounwind readnone
+define <4 x i16> @__psubus_vi16(<4 x i16>, <4 x i16>) {
+  convert4to8(i16, %0, %v0)
+  convert4to8(i16, %1, %v1)
+  %r16 = call <8 x i16> @llvm.x86.sse2.psubus.w(<8 x i16> %v0, <8 x i16> %v1)
+  convert8to4(i16, %r16, %r)
+  ret <4 x i16> %r
+}
+')
+
+;;8-wide vector saturation arithmetic
+
+define(`saturation_arithmetic_vec8', `
+declare <16 x i8> @llvm.x86.sse2.padds.b(<16 x i8>, <16 x i8>) nounwind readnone
+define <8 x i8> @__padds_vi8(<8 x i8>, <8 x i8>) {
+  convert8to16(i8, %0, %v0)
+  convert8to16(i8, %1, %v1)
+  %r16 = call <16 x i8> @llvm.x86.sse2.padds.b(<16 x i8> %v0, <16 x i8> %v1)
+  convert16to8(i8, %r16, %r)
+  ret <8 x i8> %r
+}
+
+declare <8 x i16> @llvm.x86.sse2.padds.w(<8 x i16>, <8 x i16>) nounwind readnone
+define <8 x i16> @__padds_vi16(<8 x i16> %a0, <8 x i16> %a1) {
+  %res = call <8 x i16> @llvm.x86.sse2.padds.w(<8 x i16> %a0, <8 x i16> %a1)
+  ret <8 x i16> %res
+}
+
+declare <16 x i8> @llvm.x86.sse2.paddus.b(<16 x i8>, <16 x i8>) nounwind readnone
+define <8 x i8> @__paddus_vi8(<8 x i8>, <8 x i8>) {
+  convert8to16(i8, %0, %v0)
+  convert8to16(i8, %1, %v1)
+  %r16 = call <16 x i8> @llvm.x86.sse2.paddus.b(<16 x i8> %v0, <16 x i8> %v1)
+  convert16to8(i8, %r16, %r)
+  ret <8 x i8> %r
+}
+
+declare <8 x i16> @llvm.x86.sse2.paddus.w(<8 x i16>, <8 x i16>) nounwind readnone
+define <8 x i16> @__paddus_vi16(<8 x i16> %a0, <8 x i16> %a1) {
+  %res = call <8 x i16> @llvm.x86.sse2.paddus.w(<8 x i16> %a0, <8 x i16> %a1)
+  ret <8 x i16> %res
+}
+
+declare <16 x i8> @llvm.x86.sse2.psubs.b(<16 x i8>, <16 x i8>) nounwind readnone
+define <8 x i8> @__psubs_vi8(<8 x i8>, <8 x i8>) {
+  convert8to16(i8, %0, %v0)
+  convert8to16(i8, %1, %v1)
+  %r16 = call <16 x i8> @llvm.x86.sse2.psubs.b(<16 x i8> %v0, <16 x i8> %v1)
+  convert16to8(i8, %r16, %r)
+  ret <8 x i8> %r
+}
+
+declare <8 x i16> @llvm.x86.sse2.psubs.w(<8 x i16>, <8 x i16>) nounwind readnone
+define <8 x i16> @__psubs_vi16(<8 x i16> %a0, <8 x i16> %a1) {
+  %res = call <8 x i16> @llvm.x86.sse2.psubs.w(<8 x i16> %a0, <8 x i16> %a1)
+  ret <8 x i16> %res
+}
+
+declare <16 x i8> @llvm.x86.sse2.psubus.b(<16 x i8>, <16 x i8>) nounwind readnone
+define <8 x i8> @__psubus_vi8(<8 x i8>, <8 x i8>) {
+  convert8to16(i8, %0, %v0)
+  convert8to16(i8, %1, %v1)
+  %r16 = call <16 x i8> @llvm.x86.sse2.psubus.b(<16 x i8> %v0, <16 x i8> %v1)
+  convert16to8(i8, %r16, %r)
+  ret <8 x i8> %r    
+}
+
+declare <8 x i16> @llvm.x86.sse2.psubus.w(<8 x i16>, <8 x i16>) nounwind readnone
+define <8 x i16> @__psubus_vi16(<8 x i16> %a0, <8 x i16> %a1) {
+  %res = call <8 x i16> @llvm.x86.sse2.psubus.w(<8 x i16> %a0, <8 x i16> %a1)
+  ret <8 x i16> %res
+}
+')
+
+;;16-wide vector saturation arithmetic
+
+define(`saturation_arithmetic_vec16', `
+declare <16 x i8> @llvm.x86.sse2.padds.b(<16 x i8>, <16 x i8>) nounwind readnone
+define <16 x i8> @__padds_vi8(<16 x i8> %a0, <16 x i8> %a1) {
+  %res = call <16 x i8> @llvm.x86.sse2.padds.b(<16 x i8> %a0, <16 x i8> %a1) ; <<16 x i8>> [#uses=1]
+  ret <16 x i8> %res
+}
+
+declare <8 x i16> @llvm.x86.sse2.padds.w(<8 x i16>, <8 x i16>) nounwind readnone
+define <16 x i16> @__padds_vi16(<16 x i16> %a0, <16 x i16> %a1) {
+  binary8to16(ret, i16, @llvm.x86.sse2.padds.w, %a0, %a1)
+  ret <16 x i16> %ret
+}
+
+declare <16 x i8> @llvm.x86.sse2.paddus.b(<16 x i8>, <16 x i8>) nounwind readnone
+define <16 x i8> @__paddus_vi8(<16 x i8> %a0, <16 x i8> %a1) {
+  %res = call <16 x i8> @llvm.x86.sse2.paddus.b(<16 x i8> %a0, <16 x i8> %a1) ; <<16 x i8>> [#uses=1]
+  ret <16 x i8> %res
+}
+
+declare <8 x i16> @llvm.x86.sse2.paddus.w(<8 x i16>, <8 x i16>) nounwind readnone
+define <16 x i16> @__paddus_vi16(<16 x i16> %a0, <16 x i16> %a1) {
+  binary8to16(ret, i16, @llvm.x86.sse2.paddus.w, %a0, %a1)  
+  ret <16 x i16> %ret
+}
+
+declare <16 x i8> @llvm.x86.sse2.psubs.b(<16 x i8>, <16 x i8>) nounwind readnone
+define <16 x i8> @__psubs_vi8(<16 x i8> %a0, <16 x i8> %a1) {
+  %res = call <16 x i8> @llvm.x86.sse2.psubs.b(<16 x i8> %a0, <16 x i8> %a1) ; <<16 x i8>> [#uses=1]
+  ret <16 x i8> %res
+}
+
+declare <8 x i16> @llvm.x86.sse2.psubs.w(<8 x i16>, <8 x i16>) nounwind readnone
+define <16 x i16> @__psubs_vi16(<16 x i16> %a0, <16 x i16> %a1) {
+  binary8to16(ret, i16, @llvm.x86.sse2.psubs.w, %a0, %a1)
+  ret <16 x i16> %ret
+}
+
+declare <16 x i8> @llvm.x86.sse2.psubus.b(<16 x i8>, <16 x i8>) nounwind readnone
+define <16 x i8> @__psubus_vi8(<16 x i8> %a0, <16 x i8> %a1) {
+  %res = call <16 x i8> @llvm.x86.sse2.psubus.b(<16 x i8> %a0, <16 x i8> %a1) ; <<16 x i8>> [#uses=1]
+  ret <16 x i8> %res
+}
+
+declare <8 x i16> @llvm.x86.sse2.psubus.w(<8 x i16>, <8 x i16>) nounwind readnone
+define <16 x i16> @__psubus_vi16(<16 x i16> %a0, <16 x i16> %a1) {
+  binary8to16(ret, i16, @llvm.x86.sse2.psubus.w, %a0, %a1)  
+  ret <16 x i16> %ret
+}
+')
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -797,6 +1207,24 @@ not_const:
   ret <WIDTH x $1> %result
 }
 
+define <WIDTH x $1> @__shift_$1(<WIDTH x $1>, i32) nounwind readnone alwaysinline {
+  %ptr = alloca <WIDTH x $1>, i32 3
+  %ptr0 = getelementptr <WIDTH x $1> * %ptr, i32 0
+  store <WIDTH x $1> zeroinitializer, <WIDTH x $1> * %ptr0
+  %ptr1 = getelementptr <WIDTH x $1> * %ptr, i32 1
+  store <WIDTH x $1> %0, <WIDTH x $1> * %ptr1
+  %ptr2 = getelementptr <WIDTH x $1> * %ptr, i32 2
+  store <WIDTH x $1> zeroinitializer, <WIDTH x $1> * %ptr2
+
+  %offset = add i32 %1, WIDTH
+  %ptr_as_elt_array = bitcast <WIDTH x $1> * %ptr to [eval(3*WIDTH) x $1] *
+  %load_ptr = getelementptr [eval(3*WIDTH) x $1] * %ptr_as_elt_array, i32 0, i32 %offset
+  %load_ptr_vec = bitcast $1 * %load_ptr to <WIDTH x $1> *
+  %result = load <WIDTH x $1> * %load_ptr_vec, align $2
+  ret <WIDTH x $1> %result
+}
+
+
 define <WIDTH x $1> @__shuffle_$1(<WIDTH x $1>, <WIDTH x i32>) nounwind readnone alwaysinline {
 forloop(i, 0, eval(WIDTH-1), `  
   %index_`'i = extractelement <WIDTH x i32> %1, i32 i')
@@ -1069,7 +1497,12 @@ define <$1 x $2> @__atomic_compare_exchange_$3_global($2* %ptr, <$1 x $2> %cmp,
   per_lane($1, <$1 x MASK> %mask, `
    %cmp_LANE_ID = extractelement <$1 x $2> %cmp, i32 LANE
    %val_LANE_ID = extractelement <$1 x $2> %val, i32 LANE
-   %r_LANE_ID = cmpxchg $2 * %ptr, $2 %cmp_LANE_ID, $2 %val_LANE_ID seq_cst
+  ifelse(LLVM_VERSION,LLVM_3_5,`
+    %r_LANE_ID = cmpxchg $2 * %ptr, $2 %cmp_LANE_ID, $2 %val_LANE_ID seq_cst seq_cst
+  ',`
+    %r_LANE_ID = cmpxchg $2 * %ptr, $2 %cmp_LANE_ID, $2 %val_LANE_ID seq_cst
+  ')
+
    %rp_LANE_ID = getelementptr $2 * %rptr32, i32 LANE
    store $2 %r_LANE_ID, $2 * %rp_LANE_ID')
 
@@ -1079,7 +1512,11 @@ define <$1 x $2> @__atomic_compare_exchange_$3_global($2* %ptr, <$1 x $2> %cmp,
 
 define $2 @__atomic_compare_exchange_uniform_$3_global($2* %ptr, $2 %cmp,
                                                        $2 %val) nounwind alwaysinline {
-  %r = cmpxchg $2 * %ptr, $2 %cmp, $2 %val seq_cst
+  ifelse(LLVM_VERSION,LLVM_3_5,`
+   %r = cmpxchg $2 * %ptr, $2 %cmp, $2 %val seq_cst seq_cst
+  ',`
+   %r = cmpxchg $2 * %ptr, $2 %cmp, $2 %val seq_cst
+  ')
   ret $2 %r
 }
 ')
@@ -1813,7 +2250,7 @@ define(`stdlib_core', `
 declare i32 @__fast_masked_vload()
 
 declare i8* @ISPCAlloc(i8**, i64, i32) nounwind
-declare void @ISPCLaunch(i8**, i8*, i8*, i32) nounwind
+declare void @ISPCLaunch(i8**, i8*, i8*, i32, i32, i32) nounwind
 declare void @ISPCSync(i8*) nounwind
 declare void @ISPCInstrument(i8*, i8*, i32, i64) nounwind
 
@@ -2087,13 +2524,6 @@ declare void
 declare void
 @__pseudo_scatter_base_offsets64_double(i8 * nocapture, i32, <WIDTH x i64>,
                                         <WIDTH x double>, <WIDTH x MASK>) nounwind
-
-declare float @__log_uniform_float(float) nounwind readnone
-declare <WIDTH x float> @__log_varying_float(<WIDTH x float>) nounwind readnone
-declare float @__exp_uniform_float(float) nounwind readnone
-declare <WIDTH x float> @__exp_varying_float(<WIDTH x float>) nounwind readnone
-declare float @__pow_uniform_float(float, float) nounwind readnone
-declare <WIDTH x float> @__pow_varying_float(<WIDTH x float>, <WIDTH x float>) nounwind readnone
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -3797,6 +4227,51 @@ loopend:
 done:
   ret i32 %nextoffset
 }
+
+define MASK @__packed_store_active2(i32 * %startptr, <WIDTH x i32> %vals,
+                                   <WIDTH x MASK> %full_mask) nounwind alwaysinline {
+entry:
+  %mask = call i64 @__movmsk(<WIDTH x MASK> %full_mask)
+  %mask_known = call i1 @__is_compile_time_constant_mask(<WIDTH x MASK> %full_mask)
+  br i1 %mask_known, label %known_mask, label %unknown_mask
+
+known_mask:
+  %allon = icmp eq i64 %mask, ALL_ON_MASK
+  br i1 %allon, label %all_on, label %unknown_mask
+ 
+all_on:
+  %vecptr = bitcast i32 *%startptr to <WIDTH x i32> *
+  store <WIDTH x i32> %vals, <WIDTH x i32> * %vecptr, align 4
+  ret MASK WIDTH
+ 
+unknown_mask:
+  br label %loop
+ 
+loop:
+  %offset = phi MASK [ 0, %unknown_mask ], [ %ch_offset, %loop ]
+  %i = phi i32 [ 0, %unknown_mask ], [ %ch_i, %loop ]
+  %storeval = extractelement <WIDTH x i32> %vals, i32 %i
+
+;; Offset has value in range from 0 to WIDTH-1. So it does not matter if we
+;; zero or sign extending it, while zero extend is free. Also do nothing for
+;; i64 MASK, as we need i64 value.
+ifelse(MASK, `i64',
+` %storeptr = getelementptr i32 *%startptr, MASK %offset',
+` %offset1 = zext MASK %offset to i64
+  %storeptr = getelementptr i32 *%startptr, i64 %offset1')
+  store i32 %storeval, i32 *%storeptr
+
+  %mull_mask = extractelement <WIDTH x MASK> %full_mask, i32 %i
+  %ch_offset = sub MASK %offset, %mull_mask
+ 
+  ; are we done yet?
+  %ch_i = add i32 %i, 1
+  %test = icmp ne i32 %ch_i, WIDTH
+  br i1 %test, label %loop, label %done
+ 
+done:
+  ret MASK %ch_offset
+}
 ')
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -4467,4 +4942,69 @@ define_avg_down_int16()
 define(`define_avgs', `
 define_up_avgs()
 define_down_avgs()
+')
+
+define(`rsqrtd_decl', `
+declare  double @__rsqrt_uniform_double(double)
+declare <WIDTH x double> @__rsqrt_varying_double(<WIDTH x double>)
+')
+
+define(`rcpd_decl', `
+declare  double @__rcp_uniform_double(double)
+declare <WIDTH x double> @__rcp_varying_double(<WIDTH x double>)
+')
+
+
+define(`transcendetals_decl',`
+    declare float @__log_uniform_float(float) nounwind readnone
+    declare <WIDTH x float> @__log_varying_float(<WIDTH x float>) nounwind readnone
+    declare float @__exp_uniform_float(float) nounwind readnone
+    declare <WIDTH x float> @__exp_varying_float(<WIDTH x float>) nounwind readnone
+    declare float @__pow_uniform_float(float, float) nounwind readnone
+    declare <WIDTH x float> @__pow_varying_float(<WIDTH x float>, <WIDTH x float>) nounwind readnone
+
+    declare double @__log_uniform_double(double) nounwind readnone
+    declare <WIDTH x double> @__log_varying_double(<WIDTH x double>) nounwind readnone
+    declare double @__exp_uniform_double(double) nounwind readnone
+    declare <WIDTH x double> @__exp_varying_double(<WIDTH x double>) nounwind readnone
+    declare double @__pow_uniform_double(double, double) nounwind readnone
+    declare <WIDTH x double> @__pow_varying_double(<WIDTH x double>, <WIDTH x double>) nounwind readnone
+')
+
+define(`trigonometry_decl',`
+    declare <WIDTH x float> @__sin_varying_float(<WIDTH x float>) nounwind readnone
+    declare <WIDTH x float> @__asin_varying_float(<WIDTH x float>) nounwind readnone
+    declare <WIDTH x float> @__cos_varying_float(<WIDTH x float>) nounwind readnone
+    declare <WIDTH x float> @__acos_varying_float(<WIDTH x float>) nounwind readnone
+    declare void @__sincos_varying_float(<WIDTH x float>, <WIDTH x float>*, <WIDTH x float>*) nounwind readnone
+    declare <WIDTH x float> @__tan_varying_float(<WIDTH x float>) nounwind readnone
+    declare <WIDTH x float> @__atan_varying_float(<WIDTH x float>) nounwind readnone
+    declare <WIDTH x float> @__atan2_varying_float(<WIDTH x float>,<WIDTH x float>) nounwind readnone
+
+    declare float @__sin_uniform_float(float) nounwind readnone
+    declare float @__asin_uniform_float(float) nounwind readnone
+    declare float @__cos_uniform_float(float) nounwind readnone
+    declare float @__acos_uniform_float(float) nounwind readnone
+    declare void @__sincos_uniform_float(float, float*, float*) nounwind readnone
+    declare float @__tan_uniform_float(float) nounwind readnone
+    declare float @__atan_uniform_float(float) nounwind readnone
+    declare float @__atan2_uniform_float(float,float) nounwind readnone
+
+    declare <WIDTH x double> @__sin_varying_double(<WIDTH x double>) nounwind readnone
+    declare <WIDTH x double> @__asin_varying_double(<WIDTH x double>) nounwind readnone
+    declare <WIDTH x double> @__cos_varying_double(<WIDTH x double>) nounwind readnone
+    declare <WIDTH x double> @__acos_varying_double(<WIDTH x double>) nounwind readnone
+    declare void @__sincos_varying_double(<WIDTH x double>, <WIDTH x double>*, <WIDTH x double>*) nounwind readnone
+    declare <WIDTH x double> @__tan_varying_double(<WIDTH x double>) nounwind readnone
+    declare <WIDTH x double> @__atan_varying_double(<WIDTH x double>) nounwind readnone
+    declare <WIDTH x double> @__atan2_varying_double(<WIDTH x double>,<WIDTH x double>) nounwind readnone
+
+    declare double @__sin_uniform_double(double) nounwind readnone
+    declare double @__asin_uniform_double(double) nounwind readnone
+    declare double @__cos_uniform_double(double) nounwind readnone
+    declare double @__acos_uniform_double(double) nounwind readnone
+    declare void @__sincos_uniform_double(double, double*, double*) nounwind readnone
+    declare double @__tan_uniform_double(double) nounwind readnone
+    declare double @__atan_uniform_double(double) nounwind readnone
+    declare double @__atan2_uniform_double(double,double) nounwind readnone
 ')

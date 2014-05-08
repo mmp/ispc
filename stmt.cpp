@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2010-2013, Intel Corporation
+  Copyright (c) 2010-2014, Intel Corporation
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -3003,6 +3003,14 @@ lProcessPrintArg(Expr *expr, FunctionEmitContext *ctx, std::string &argTypes) {
         return NULL;
     }
     else {
+        if (Type::Equal(baseType, AtomicType::UniformBool)) {
+          // Blast bools to ints, but do it here to preserve encoding for 
+          // printing 'true' or 'false'
+            expr = new TypeCastExpr(type->IsUniformType() ? AtomicType::UniformInt32 :
+                                                            AtomicType::VaryingInt32,
+                                    expr, expr->pos);
+            type = expr->GetType();
+        }
         argTypes.push_back(t);
 
         llvm::Type *llvmExprType = type->LLVMType(g->ctx);

@@ -311,6 +311,17 @@ static FORCEINLINE VTYPE __rotate_##NAME(VTYPE v, int index) {   \
     return ret;                                       \
 }                                                     \
 
+#define SHIFT(VTYPE, NAME, STYPE)                    \
+static FORCEINLINE VTYPE __shift_##NAME(VTYPE v, int index) {   \
+    VTYPE ret;                                        \
+    for (int i = 0; i < 16; ++i) {                    \
+      int modIndex = i+index;                         \
+      STYPE val = ((modIndex >= 0) && (modIndex < 16)) ? v.v[modIndex] : 0; \
+      ret.v[i] = val;                                 \
+    }                                                 \
+    return ret;                                       \
+}                                                     \
+
 #define SHUFFLES(VTYPE, NAME, STYPE)                 \
 static FORCEINLINE VTYPE __shuffle_##NAME(VTYPE v, __vec16_i32 index) {   \
     VTYPE ret;                                        \
@@ -492,6 +503,7 @@ SETZERO(__vec16_i8, i8)
 UNDEF(__vec16_i8, i8)
 BROADCAST(__vec16_i8, i8, int8_t)
 ROTATE(__vec16_i8, i8, int8_t)
+SHIFT(__vec16_i8, i8, int8_t)
 SHUFFLES(__vec16_i8, i8, int8_t)
 LOAD_STORE(__vec16_i8, int8_t)
 
@@ -537,6 +549,7 @@ SETZERO(__vec16_i16, i16)
 UNDEF(__vec16_i16, i16)
 BROADCAST(__vec16_i16, i16, int16_t)
 ROTATE(__vec16_i16, i16, int16_t)
+SHIFT(__vec16_i16, i16, int16_t)
 SHUFFLES(__vec16_i16, i16, int16_t)
 LOAD_STORE(__vec16_i16, int16_t)
 
@@ -582,6 +595,7 @@ SETZERO(__vec16_i32, i32)
 UNDEF(__vec16_i32, i32)
 BROADCAST(__vec16_i32, i32, int32_t)
 ROTATE(__vec16_i32, i32, int32_t)
+SHIFT(__vec16_i32, i32, int32_t)
 SHUFFLES(__vec16_i32, i32, int32_t)
 LOAD_STORE(__vec16_i32, int32_t)
 
@@ -627,6 +641,7 @@ SETZERO(__vec16_i64, i64)
 UNDEF(__vec16_i64, i64)
 BROADCAST(__vec16_i64, i64, int64_t)
 ROTATE(__vec16_i64, i64, int64_t)
+SHIFT(__vec16_i64, i64, int64_t)
 SHUFFLES(__vec16_i64, i64, int64_t)
 LOAD_STORE(__vec16_i64, int64_t)
 
@@ -672,41 +687,9 @@ SETZERO(__vec16_f, float)
 UNDEF(__vec16_f, float)
 BROADCAST(__vec16_f, float, float)
 ROTATE(__vec16_f, float, float)
+SHIFT(__vec16_f, float, float)
 SHUFFLES(__vec16_f, float, float)
 LOAD_STORE(__vec16_f, float)
-
-static FORCEINLINE float __exp_uniform_float(float v) {
-    return expf(v);
-}
-
-static FORCEINLINE __vec16_f __exp_varying_float(__vec16_f v) {
-    __vec16_f ret;
-    for (int i = 0; i < 16; ++i)
-        ret.v[i] = expf(v.v[i]);
-    return ret;
-}
-
-static FORCEINLINE float __log_uniform_float(float v) {
-    return logf(v);
-}
-
-static FORCEINLINE __vec16_f __log_varying_float(__vec16_f v) {
-    __vec16_f ret;
-    for (int i = 0; i < 16; ++i)
-        ret.v[i] = logf(v.v[i]);
-    return ret;
-}
-
-static FORCEINLINE float __pow_uniform_float(float a, float b) {
-    return powf(a, b);
-}
-
-static FORCEINLINE __vec16_f __pow_varying_float(__vec16_f a, __vec16_f b) {
-    __vec16_f ret;
-    for (int i = 0; i < 16; ++i)
-        ret.v[i] = powf(a.v[i], b.v[i]);
-    return ret;
-}
 
 static FORCEINLINE int __intbits(float v) {
     union {
@@ -832,6 +815,7 @@ SETZERO(__vec16_d, double)
 UNDEF(__vec16_d, double)
 BROADCAST(__vec16_d, double, double)
 ROTATE(__vec16_d, double, double)
+SHIFT(__vec16_d, double, double)
 SHUFFLES(__vec16_d, double, double)
 LOAD_STORE(__vec16_d, double)
 
@@ -1069,8 +1053,16 @@ static FORCEINLINE float __rsqrt_uniform_float(float v) {
     return 1.f / sqrtf(v);
 }
 
+static FORCEINLINE double __rsqrt_uniform_double(double v) {
+    return 1.0 / sqrt(v);
+}
+
 static FORCEINLINE float __rcp_uniform_float(float v) {
     return 1.f / v;
+}
+
+static FORCEINLINE double __rcp_uniform_double(double v) {
+    return 1.0 / v;
 }
 
 static FORCEINLINE float __sqrt_uniform_float(float v) {
@@ -1082,7 +1074,9 @@ static FORCEINLINE double __sqrt_uniform_double(double v) {
 }
 
 UNARY_OP(__vec16_f, __rcp_varying_float, __rcp_uniform_float)
+UNARY_OP(__vec16_d, __rcp_varying_double, __rcp_uniform_double)
 UNARY_OP(__vec16_f, __rsqrt_varying_float, __rsqrt_uniform_float)
+UNARY_OP(__vec16_d, __rsqrt_varying_double, __rsqrt_uniform_double)
 UNARY_OP(__vec16_f, __sqrt_varying_float, __sqrt_uniform_float)
 UNARY_OP(__vec16_d, __sqrt_varying_double, __sqrt_uniform_double)
 
@@ -1455,31 +1449,38 @@ static FORCEINLINE int32_t __packed_store_active(int32_t *ptr, __vec16_i32 val,
     return count;
 }
 
+
+static FORCEINLINE int32_t __packed_store_active2(int32_t *ptr, __vec16_i32 val,
+                                                 __vec16_i1 mask) {
+    int count = 0;
+    int32_t *ptr_ = ptr;
+    for (int i = 0; i < 16; ++i) {
+        *ptr = val.v[i];
+        ptr += mask.v & 1;
+        mask.v = mask.v >> 1;
+    }
+    return ptr - ptr_;
+}
+
+
 static FORCEINLINE int32_t __packed_load_active(uint32_t *ptr,
                                                 __vec16_i32 *val,
                                                 __vec16_i1 mask) {
-    int count = 0; 
-    for (int i = 0; i < 16; ++i) {
-        if ((mask.v & (1 << i)) != 0) {
-            val->v[i] = *ptr++;
-            ++count;
-        }
-    }
-    return count;
+    return __packed_load_active((int32_t *)ptr, val, mask);
 }
 
 
 static FORCEINLINE int32_t __packed_store_active(uint32_t *ptr, 
                                                  __vec16_i32 val,
                                                  __vec16_i1 mask) {
-    int count = 0; 
-    for (int i = 0; i < 16; ++i) {
-        if ((mask.v & (1 << i)) != 0) {
-            *ptr++ = val.v[i];
-            ++count;
-        }
-    }
-    return count;
+    return __packed_store_active((int32_t *)ptr, val, mask);
+}
+
+
+static FORCEINLINE int32_t __packed_store_active2(uint32_t *ptr,
+                                                 __vec16_i32 val,
+                                                 __vec16_i1 mask) {
+    return __packed_store_active2((int32_t *)ptr, val, mask);
 }
 
 
@@ -1779,3 +1780,97 @@ static FORCEINLINE uint64_t __clock() {
 
 #endif // !WIN32
 
+
+///////////////////////////////////////////////////////////////////////////
+// Transcendentals
+//
+//
+#define TRANSCENDENTALS(op) \
+static FORCEINLINE float __##op##_uniform_float(float v) { \
+    return op##f(v); \
+} \
+static FORCEINLINE __vec16_f __##op##_varying_float(__vec16_f v) { \
+    __vec16_f ret; \
+    for (int i = 0; i < 16; ++i) \
+        ret.v[i] = op##f(v.v[i]); \
+    return ret; \
+} \
+static FORCEINLINE double __##op##_uniform_double(double v) { \
+    return op(v); \
+} \
+static FORCEINLINE __vec16_d __##op##_varying_double(__vec16_d v) { \
+    __vec16_d ret; \
+    for (int i = 0; i < 16; ++i) \
+        ret.v[i] = op(v.v[i]); \
+    return ret; \
+}
+
+  TRANSCENDENTALS(log)
+TRANSCENDENTALS(exp)
+
+
+static FORCEINLINE float __pow_uniform_float(float a, float b) {
+    return powf(a, b);
+}
+static FORCEINLINE __vec16_f __pow_varying_float(__vec16_f a, __vec16_f b) {
+    __vec16_f ret;
+    for (int i = 0; i < 16; ++i)
+        ret.v[i] = powf(a.v[i], b.v[i]);
+    return ret;
+}
+static FORCEINLINE double __pow_uniform_double(double a, double b) {
+    return pow(a, b);
+}
+static FORCEINLINE __vec16_d __pow_varying_double(__vec16_d a, __vec16_d b) {
+    __vec16_d ret;
+    for (int i = 0; i < 16; ++i)
+        ret.v[i] = pow(a.v[i], b.v[i]);
+    return ret;
+}
+
+///////////////////////////////////////////////////////////////////////////
+// Trigonometry
+
+TRANSCENDENTALS(sin)
+TRANSCENDENTALS(asin)
+TRANSCENDENTALS(cos)
+TRANSCENDENTALS(acos)
+TRANSCENDENTALS(tan)
+TRANSCENDENTALS(atan)
+
+
+static FORCEINLINE float __atan2_uniform_float(float a, float b) {
+    return atan2f(a, b);
+}
+static FORCEINLINE __vec16_f __atan2_varying_float(__vec16_f a, __vec16_f b) {
+    __vec16_f ret;
+    for (int i = 0; i < 16; ++i)
+        ret.v[i] = atan2f(a.v[i], b.v[i]);
+    return ret;
+}
+static FORCEINLINE double __atan2_uniform_double(double a, double b) {
+    return atan2(a, b);
+}
+static FORCEINLINE __vec16_d __atan2_varying_double(__vec16_d a, __vec16_d b) {
+    __vec16_d ret;
+    for (int i = 0; i < 16; ++i)
+        ret.v[i] = atan2(a.v[i], b.v[i]);
+    return ret;
+}
+
+static FORCEINLINE void __sincos_uniform_float(float x, float *a, float *b) {
+    sincosf(x,a,b);
+}
+static FORCEINLINE void __sincos_varying_float(__vec16_f x, __vec16_f *a, __vec16_f *b) {
+    __vec16_f ret;
+    for (int i = 0; i < 16; ++i)
+        sincosf(x.v[i], (float*)a + i, (float*)b+i);
+}
+static FORCEINLINE void __sincos_uniform_double(double x, double *a, double *b) {
+    sincos(x,a,b);
+}
+static FORCEINLINE void __sincos_varying_double(__vec16_d x, __vec16_d *a, __vec16_d *b) {
+    __vec16_d ret;
+    for (int i = 0; i < 16; ++i)
+        sincos(x.v[i], (double*)a + i, (double*)b+i);
+}

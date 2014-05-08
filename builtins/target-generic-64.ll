@@ -1,4 +1,4 @@
-;;  Copyright (c) 2010-2012, Intel Corporation
+;;  Copyright (c) 2010-2014, Intel Corporation
 ;;  All rights reserved.
 ;;
 ;;  Redistribution and use in source and binary forms, with or without
@@ -31,3 +31,4 @@
 
 define(`WIDTH',`64')
 include(`target-generic-common.ll')
+saturation_arithmetic_novec()

@@ -1,4 +1,4 @@
-;;  Copyright (c) 2010-2012, Intel Corporation
+;;  Copyright (c) 2010-2014, Intel Corporation
 ;;  All rights reserved.
 ;;
 ;;  Redistribution and use in source and binary forms, with or without
@@ -41,6 +41,7 @@ stdlib_core()
 packed_load_and_store()
 scans()
 int64minmax()
+saturation_arithmetic()
 
 include(`target-sse2-common.ll')
 
@@ -587,3 +588,12 @@ gen_scatter(i32)
 gen_scatter(float)
 gen_scatter(i64)
 gen_scatter(double)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; reciprocals in double precision, if supported
+
+rsqrtd_decl()
+rcpd_decl()
+
+transcendetals_decl()
+trigonometry_decl()

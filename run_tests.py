@@ -211,7 +211,7 @@ def run_test(testname):
                     obj_name = "%s.obj" % os.path.basename(filename)
                 exe_name = "%s.exe" % os.path.basename(filename)
 
-                cc_cmd = "%s /I. /I../winstuff /Zi /nologo /DTEST_SIG=%d %s %s /Fe%s" % \
+                cc_cmd = "%s /I. /Zi /nologo /DTEST_SIG=%d %s %s /Fe%s" % \
                          (options.compiler_exe, match, add_prefix("test_static.cpp"), obj_name, exe_name)
                 if should_fail:
                     cc_cmd += " /DEXPECT_FAILURE"
@@ -295,6 +295,8 @@ def run_tasks_from_queue(queue, queue_ret, queue_skip, total_tests_arg, max_test
 
     if is_windows:
         tmpdir = "tmp%d" % os.getpid()
+        while os.access(tmpdir, os.F_OK):
+            tmpdir = "%sx" % tmpdir
         os.mkdir(tmpdir)
         os.chdir(tmpdir)
     else:
@@ -377,7 +379,12 @@ def file_check(compfails, runfails):
             temp3 = re.search("[0-9]*\.[0-9]*", temp2.group())
         compiler_version = options.compiler_exe + temp3.group()
     else:
-        compiler_version = "cl" 
+        compiler_version = "cl"
+    possible_compilers = ["clang++3.3", "clang++3.4", "cl"]
+    if not compiler_version in possible_compilers:
+        error("\n**********\nWe don't have history of fails for compiler " +
+                compiler_version +
+                "\nAll fails will be new!!!\n**********", 2)
     new_line = " "+options.arch.rjust(6)+" "+options.target.rjust(14)+" "+OS.rjust(7)+" "+llvm_version+" "+compiler_version.rjust(10)+" "+opt+" *\n"
 
     new_compfails = compfails[:]
@@ -447,10 +454,11 @@ def verify():
     f_lines = f.readlines()
     f.close()
     check = [["g++", "clang++", "cl"],["-O0", "-O2"],["x86","x86-64"],
-             ["Linux","Windows","Mac"],["LLVM 3.1","LLVM 3.2","LLVM 3.3","LLVM head"],
+             ["Linux","Windows","Mac"],["LLVM 3.1","LLVM 3.2","LLVM 3.3","LLVM 3.4","LLVM trunk"],
              ["sse2-i32x4", "sse2-i32x8", "sse4-i32x4", "sse4-i32x8", "sse4-i16x8",
-              "sse4-i8x16", "avx1-i32x8", "avx1-i32x16", "avx1-i64x4", "avx1.1-i32x8", "avx1.1-i32x16",
-              "avx2-i32x8", "avx2-i32x16", "generic-1", "generic-4", "generic-8",
+              "sse4-i8x16", "avx1-i32x4" "avx1-i32x8", "avx1-i32x16", "avx1-i64x4", "avx1.1-i32x8",
+              "avx1.1-i32x16", "avx1.1-i64x4", "avx2-i32x8", "avx2-i32x16", "avx2-i64x4",
+              "generic-1", "generic-4", "generic-8",
               "generic-16", "generic-32", "generic-64"]]
     for i in range (0,len(f_lines)):
         if f_lines[i][0] == "%":
@@ -647,7 +655,8 @@ def run_tests(options1, args, print_version):
     if options.non_interactive == False:
         print_debug("\n", s, run_tests_log)
 
-    elapsed_time = time.time() - start_time
+    temp_time = (time.time() - start_time)
+    elapsed_time = time.strftime('%Hh%Mm%Ssec.', time.gmtime(temp_time))
 
     while not qret.empty():
         (c, r, skip) = qret.get()
@@ -675,12 +684,16 @@ def run_tests(options1, args, print_version):
     if len(compile_error_files) == 0 and len(run_error_files) == 0:
         print_debug("No fails\n", s, run_tests_log)
 
-    R = file_check(compile_error_files, run_error_files)
+    if len(args) == 0:
+        R = file_check(compile_error_files, run_error_files)
+    else:
+        error("don't check new fails for incomplete suite of tests", 2)
+        R = 0
 
     if options.time:
-        print_debug("Elapsed time: %d s\n" % elapsed_time, s, run_tests_log)
+        print_debug("Elapsed time: " + elapsed_time + "\n", s, run_tests_log)
 
-    return R
+    return [R, elapsed_time]
 
 
 from optparse import OptionParser

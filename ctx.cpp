@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2010-2013, Intel Corporation
+  Copyright (c) 2010-2014, Intel Corporation
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -276,7 +276,7 @@ FunctionEmitContext::FunctionEmitContext(Function *func, Symbol *funSym,
     disableGSWarningCount = 0;
 
     const Type *returnType = function->GetReturnType();
-    if (!returnType || Type::Equal(returnType, AtomicType::Void))
+    if (!returnType || returnType->IsVoidType())
         returnValuePtr = NULL;
     else {
         llvm::Type *ftype = returnType->LLVMType(g->ctx);
@@ -316,7 +316,11 @@ FunctionEmitContext::FunctionEmitContext(Function *func, Symbol *funSym,
             llvm::BasicBlock *offBB =
                    llvm::BasicBlock::Create(*g->ctx, "entry",
                                             (llvm::Function *)offFunc, 0);
-            new llvm::StoreInst(LLVMMaskAllOff, globalAllOnMaskPtr, offBB);
+            llvm::StoreInst *inst =
+                new llvm::StoreInst(LLVMMaskAllOff, globalAllOnMaskPtr, offBB);
+            if (g->opt.forceAlignedMemory) {
+                inst->setAlignment(g->target->getNativeVectorAlignment());
+            }
             llvm::ReturnInst::Create(*g->ctx, offBB);
         }
 
@@ -348,7 +352,7 @@ FunctionEmitContext::FunctionEmitContext(Function *func, Symbol *funSym,
             AssertPos(currentPos, diSubprogramType.Verify());
         }
 
-#if defined(LLVM_3_4)
+#if defined(LLVM_3_4) || defined(LLVM_3_5)
         Assert(diSubprogramType.isCompositeType());
         llvm::DICompositeType diSubprogramType_n =
             static_cast<llvm::DICompositeType>(diSubprogramType);
@@ -1240,7 +1244,7 @@ FunctionEmitContext::GetLabels() {
 void
 FunctionEmitContext::CurrentLanesReturned(Expr *expr, bool doCoherenceCheck) {
     const Type *returnType = function->GetReturnType();
-    if (Type::Equal(returnType, AtomicType::Void)) {
+    if (returnType->IsVoidType()) {
         if (expr != NULL)
             Error(expr->pos, "Can't return non-void type \"%s\" from void function.",
                   expr->GetType()->GetString().c_str());
@@ -1542,7 +1546,14 @@ FunctionEmitContext::StartScope() {
         llvm::DILexicalBlock lexicalBlock =
             m->diBuilder->createLexicalBlock(parentScope, diFile,
                                              currentPos.first_line,
+#if defined(LLVM_3_5)
+        // Revision 202736 in LLVM adds support of DWARF discriminator
+        // to the last argument and revision 202737 in clang adds 0
+        // for the last argument by default.
+                                             currentPos.first_column, 0);
+#else
                                              currentPos.first_column);
+#endif
         AssertPos(currentPos, lexicalBlock.Verify());
         debugScopes.push_back(lexicalBlock);
     }
@@ -2437,7 +2448,13 @@ FunctionEmitContext::LoadInst(llvm::Value *ptr, const char *name) {
     if (name == NULL)
         name = LLVMGetName(ptr, "_load");
 
-    llvm::Instruction *inst = new llvm::LoadInst(ptr, name, bblock);
+    llvm::LoadInst *inst = new llvm::LoadInst(ptr, name, bblock);
+
+    if (g->opt.forceAlignedMemory &&
+        llvm::dyn_cast<llvm::VectorType>(pt->getElementType())) {
+        inst->setAlignment(g->target->getNativeVectorAlignment());
+    }
+
     AddDebugPos(inst);
     return inst;
 }
@@ -2719,7 +2736,7 @@ FunctionEmitContext::AllocaInst(llvm::Type *llvmType,
         inst = new llvm::AllocaInst(llvmType, name ? name : "", bblock);
 
     // If no alignment was specified but we have an array of a uniform
-    // type, then align it to 4 * the native vector width; it's not
+    // type, then align it to the native vector alignment; it's not
     // unlikely that this array will be loaded into varying variables with
     // what will be aligned accesses if the uniform -> varying load is done
     // in regular chunks.
@@ -2727,7 +2744,7 @@ FunctionEmitContext::AllocaInst(llvm::Type *llvmType,
         llvm::dyn_cast<llvm::ArrayType>(llvmType);
     if (align == 0 && arrayType != NULL &&
         !llvm::isa<llvm::VectorType>(arrayType->getElementType()))
-        align = 4 * g->target->getNativeVectorWidth();
+        align = g->target->getNativeVectorAlignment();
 
     if (align != 0)
         inst->setAlignment(align);
@@ -2986,7 +3003,17 @@ FunctionEmitContext::StoreInst(llvm::Value *value, llvm::Value *ptr) {
         return;
     }
 
-    llvm::Instruction *inst = new llvm::StoreInst(value, ptr, bblock);
+    llvm::PointerType *pt =
+        llvm::dyn_cast<llvm::PointerType>(ptr->getType());
+    AssertPos(currentPos, pt != NULL);
+
+    llvm::StoreInst *inst = new llvm::StoreInst(value, ptr, bblock);
+
+    if (g->opt.forceAlignedMemory &&
+        llvm::dyn_cast<llvm::VectorType>(pt->getElementType())) {
+        inst->setAlignment(g->target->getNativeVectorAlignment());
+    }
+
     AddDebugPos(inst);
 }
 
@@ -3489,7 +3516,7 @@ FunctionEmitContext::ReturnInst() {
         rinst = llvm::ReturnInst::Create(*g->ctx, retVal, bblock);
     }
     else {
-        AssertPos(currentPos, Type::Equal(function->GetReturnType(), AtomicType::Void));
+        AssertPos(currentPos, function->GetReturnType()->IsVoidType());
         rinst = llvm::ReturnInst::Create(*g->ctx, bblock);
     }
 
@@ -3502,7 +3529,7 @@ FunctionEmitContext::ReturnInst() {
 llvm::Value *
 FunctionEmitContext::LaunchInst(llvm::Value *callee,
                                 std::vector<llvm::Value *> &argVals,
-                                llvm::Value *launchCount) {
+                                llvm::Value *launchCount[3]){
     if (callee == NULL) {
         AssertPos(currentPos, m->errorCount > 0);
         return NULL;
@@ -3563,7 +3590,9 @@ FunctionEmitContext::LaunchInst(llvm::Value *callee,
     args.push_back(launchGroupHandlePtr);
     args.push_back(fptr);
     args.push_back(voidmem);
-    args.push_back(launchCount);
+    args.push_back(launchCount[0]);
+    args.push_back(launchCount[1]);
+    args.push_back(launchCount[2]);
     return CallInst(flaunch, NULL, args, "");
 }
 

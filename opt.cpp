@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2010-2013, Intel Corporation
+  Copyright (c) 2010-2014, Intel Corporation
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -63,37 +63,39 @@
   #include <llvm/IR/BasicBlock.h>
   #include <llvm/IR/Constants.h>
 #endif
-#if defined (LLVM_3_4)
+#if defined (LLVM_3_4) || defined(LLVM_3_5)
   #include <llvm/Transforms/Instrumentation.h>
 #endif
 #include <llvm/PassManager.h>
 #include <llvm/PassRegistry.h>
-#include <llvm/Assembly/PrintModulePass.h>
+#if defined(LLVM_3_5)
+    #include <llvm/IR/Verifier.h>
+    #include <llvm/IR/IRPrintingPasses.h>
+    #include <llvm/IR/PatternMatch.h>
+    #include <llvm/IR/DebugInfo.h>
+#else
+    #include <llvm/Analysis/Verifier.h>
+    #include <llvm/Assembly/PrintModulePass.h>
+    #include <llvm/Support/PatternMatch.h>
+    #include <llvm/DebugInfo.h>
+#endif
 #include <llvm/Analysis/ConstantFolding.h>
 #include <llvm/Target/TargetLibraryInfo.h>
 #include <llvm/ADT/Triple.h>
+#include <llvm/ADT/SmallSet.h>
 #include <llvm/Transforms/Scalar.h>
 #include <llvm/Transforms/IPO.h>
 #include <llvm/Transforms/Utils/BasicBlockUtils.h>
 #include <llvm/Target/TargetOptions.h>
-#if defined(LLVM_3_1)
-  #include <llvm/Target/TargetData.h>
-#elif defined(LLVM_3_2)
+#if defined(LLVM_3_2)
   #include <llvm/DataLayout.h>
 #else // LLVM 3.3+
   #include <llvm/IR/DataLayout.h>
   #include <llvm/Analysis/TargetTransformInfo.h>
 #endif
 #include <llvm/Target/TargetMachine.h>
-#include <llvm/Analysis/Verifier.h>
 #include <llvm/Analysis/Passes.h>
 #include <llvm/Support/raw_ostream.h>
-#include <llvm/Support/PatternMatch.h>
-#if defined(LLVM_3_1)
-  #include <llvm/Analysis/DebugInfo.h>
-#else
-  #include <llvm/DebugInfo.h>
-#endif
 #include <llvm/Support/Dwarf.h>
 #ifdef ISPC_IS_LINUX
   #include <alloca.h>
@@ -123,6 +125,10 @@ static llvm::Pass *CreateIsCompileTimeConstantPass(bool isLastTry);
 static llvm::Pass *CreateMakeInternalFuncsStaticPass();
 
 static llvm::Pass *CreateDebugPass(char * output);
+
+static llvm::Pass *CreateReplaceStdlibShiftPass();
+
+static llvm::Pass *CreateFixBooleanSelectPass();
 
 #define DEBUG_START_PASS(NAME)                                 \
     if (g->debugPrint &&                                       \
@@ -438,7 +444,7 @@ DebugPassManager::add(llvm::Pass * P, int stage = -1) {
                 number, P->getPassName());
             PM.add(CreateDebugPass(buf));
         }
-#ifdef LLVM_3_4
+#if defined(LLVM_3_4) || defined(LLVM_3_5)
         if (g->debugIR == number) {
             // adding generating of LLVM IR debug after optimization
             char buf[100];
@@ -463,19 +469,19 @@ Optimize(llvm::Module *module, int optLevel) {
         new llvm::TargetLibraryInfo(llvm::Triple(module->getTargetTriple()));
     optPM.add(targetLibraryInfo);
 
-
-#if defined(LLVM_3_1)
-    optPM.add(new llvm::TargetData(*g->target->getDataLayout()));
+#if defined(LLVM_3_5)
+    optPM.add(new llvm::DataLayoutPass(*g->target->getDataLayout()));
 #else
     optPM.add(new llvm::DataLayout(*g->target->getDataLayout()));
+#endif
 
     llvm::TargetMachine *targetMachine = g->target->GetTargetMachine();
-  #ifdef LLVM_3_2
+
+#ifdef LLVM_3_2
     optPM.add(new llvm::TargetTransformInfo(targetMachine->getScalarTargetTransformInfo(),
                                             targetMachine->getVectorTargetTransformInfo()));
-  #else // LLVM 3.3+
+#else // LLVM 3.3+
     targetMachine->addAnalysisPasses(optPM.getPM());
-  #endif
 #endif
 
     optPM.add(llvm::createIndVarSimplifyPass());
@@ -509,17 +515,36 @@ Optimize(llvm::Module *module, int optLevel) {
         llvm::initializeInstrumentation(*registry);
         llvm::initializeTarget(*registry);
 
-        optPM.add(llvm::createGlobalDCEPass(), 200);
+        optPM.add(llvm::createGlobalDCEPass(), 185);
+
+        // Setup to use LLVM default AliasAnalysis
+        // Ideally, we want call:
+        //    llvm::PassManagerBuilder pm_Builder;
+        //    pm_Builder.OptLevel = optLevel;
+        //    pm_Builder.addInitialAliasAnalysisPasses(optPM);
+        // but the addInitialAliasAnalysisPasses() is a private function
+        // so we explicitly enable them here.
+        // Need to keep sync with future LLVM change
+        // An alternative is to call populateFunctionPassManager()
+        optPM.add(llvm::createTypeBasedAliasAnalysisPass(), 190);
+        optPM.add(llvm::createBasicAliasAnalysisPass());
+        optPM.add(llvm::createCFGSimplificationPass());
+        // Here clang has an experimental pass SROAPass instead of
+        // ScalarReplAggregatesPass. We should add it in the future.
+        optPM.add(llvm::createScalarReplAggregatesPass());
+        optPM.add(llvm::createEarlyCSEPass());
+        optPM.add(llvm::createLowerExpectIntrinsicPass());
 
         // Early optimizations to try to reduce the total amount of code to
         // work with if we can
-        optPM.add(llvm::createReassociatePass());
+        optPM.add(llvm::createReassociatePass(), 200);
         optPM.add(llvm::createConstantPropagationPass());
         optPM.add(llvm::createDeadInstEliminationPass());
         optPM.add(llvm::createCFGSimplificationPass());
 
         optPM.add(llvm::createPromoteMemoryToRegisterPass());
         optPM.add(llvm::createAggressiveDCEPass());
+
 
         if (g->opt.disableGatherScatterOptimizations == false &&
             g->target->getVectorWidth() > 1) {
@@ -546,7 +571,8 @@ Optimize(llvm::Module *module, int optLevel) {
         optPM.add(llvm::createGlobalOptimizerPass());
         optPM.add(llvm::createReassociatePass());
         optPM.add(llvm::createIPConstantPropagationPass());
-        optPM.add(llvm::createDeadArgEliminationPass());
+        optPM.add(CreateReplaceStdlibShiftPass(),229);
+        optPM.add(llvm::createDeadArgEliminationPass(),230);
         optPM.add(llvm::createInstructionCombiningPass());
         optPM.add(llvm::createCFGSimplificationPass());
         optPM.add(llvm::createPruneEHPass());
@@ -654,6 +680,9 @@ Optimize(llvm::Module *module, int optLevel) {
         optPM.add(CreateMakeInternalFuncsStaticPass());
         optPM.add(llvm::createGlobalDCEPass());
         optPM.add(llvm::createConstantMergePass());
+
+        // Should be the last
+        optPM.add(CreateFixBooleanSelectPass(), 400);
     }
 
     // Finish up by making sure we didn't mess anything up in the IR along
@@ -665,6 +694,7 @@ Optimize(llvm::Module *module, int optLevel) {
         printf("\n*****\nFINAL OUTPUT\n*****\n");
         module->dump();
     }
+
 }
 
 
@@ -733,24 +763,29 @@ IntrinsicsOpt::IntrinsicsOpt()
     // All of the mask instructions we may encounter.  Note that even if
     // compiling for AVX, we may still encounter the regular 4-wide SSE
     // MOVMSK instruction.
-    llvm::Function *ssei8Movmsk =
-        llvm::Intrinsic::getDeclaration(m->module, llvm::Intrinsic::x86_sse2_pmovmskb_128);
-    maskInstructions.push_back(ssei8Movmsk);
-    llvm::Function *sseFloatMovmsk =
-        llvm::Intrinsic::getDeclaration(m->module, llvm::Intrinsic::x86_sse_movmsk_ps);
-    maskInstructions.push_back(sseFloatMovmsk);
-    maskInstructions.push_back(m->module->getFunction("__movmsk"));
-    llvm::Function *avxFloatMovmsk =
-        llvm::Intrinsic::getDeclaration(m->module, llvm::Intrinsic::x86_avx_movmsk_ps_256);
-    Assert(avxFloatMovmsk != NULL);
-    maskInstructions.push_back(avxFloatMovmsk);
+    if (llvm::Function *ssei8Movmsk =
+        m->module->getFunction(llvm::Intrinsic::getName(llvm::Intrinsic::x86_sse2_pmovmskb_128))) {
+        maskInstructions.push_back(ssei8Movmsk);
+    }
+    if (llvm::Function *sseFloatMovmsk =
+        m->module->getFunction(llvm::Intrinsic::getName(llvm::Intrinsic::x86_sse_movmsk_ps))) {
+        maskInstructions.push_back(sseFloatMovmsk);
+    }
+    if (llvm::Function *__movmsk = 
+        m->module->getFunction("__movmsk")) {
+        maskInstructions.push_back(__movmsk);
+    }
+    if (llvm::Function *avxFloatMovmsk =
+        m->module->getFunction(llvm::Intrinsic::getName(llvm::Intrinsic::x86_avx_movmsk_ps_256))) {
+        maskInstructions.push_back(avxFloatMovmsk);
+    }
 
     // And all of the blend instructions
     blendInstructions.push_back(BlendInstruction(
-        llvm::Intrinsic::getDeclaration(m->module, llvm::Intrinsic::x86_sse41_blendvps),
+        m->module->getFunction(llvm::Intrinsic::getName(llvm::Intrinsic::x86_sse41_blendvps)),
         0xf, 0, 1, 2));
     blendInstructions.push_back(BlendInstruction(
-        llvm::Intrinsic::getDeclaration(m->module, llvm::Intrinsic::x86_avx_blendv_ps_256),
+        m->module->getFunction(llvm::Intrinsic::getName(llvm::Intrinsic::x86_avx_blendv_ps_256)),
         0xff, 0, 1, 2));
 }
 
@@ -782,15 +817,13 @@ IntrinsicsOpt::runOnBasicBlock(llvm::BasicBlock &bb) {
     DEBUG_START_PASS("IntrinsicsOpt");
 
     llvm::Function *avxMaskedLoad32 =
-        llvm::Intrinsic::getDeclaration(m->module, llvm::Intrinsic::x86_avx_maskload_ps_256);
+        m->module->getFunction(llvm::Intrinsic::getName(llvm::Intrinsic::x86_avx_maskload_ps_256));
     llvm::Function *avxMaskedLoad64 =
-        llvm::Intrinsic::getDeclaration(m->module, llvm::Intrinsic::x86_avx_maskload_pd_256);
+        m->module->getFunction(llvm::Intrinsic::getName(llvm::Intrinsic::x86_avx_maskload_pd_256));
     llvm::Function *avxMaskedStore32 =
-        llvm::Intrinsic::getDeclaration(m->module, llvm::Intrinsic::x86_avx_maskstore_ps_256);
+        m->module->getFunction(llvm::Intrinsic::getName(llvm::Intrinsic::x86_avx_maskstore_ps_256));
     llvm::Function *avxMaskedStore64 =
-        llvm::Intrinsic::getDeclaration(m->module, llvm::Intrinsic::x86_avx_maskstore_pd_256);
-    Assert(avxMaskedLoad32 != NULL && avxMaskedStore32 != NULL);
-    Assert(avxMaskedLoad64 != NULL && avxMaskedStore64 != NULL);
+        m->module->getFunction(llvm::Intrinsic::getName(llvm::Intrinsic::x86_avx_maskstore_pd_256));
 
     bool modifiedAny = false;
  restart:
@@ -893,7 +926,7 @@ IntrinsicsOpt::runOnBasicBlock(llvm::BasicBlock &bb) {
                     lCopyMetadata(castPtr, callInst);
                     int align;
                     if (g->opt.forceAlignedMemory)
-                        align = 0;
+                        align = g->target->getNativeVectorAlignment();
                     else
                         align = callInst->getCalledFunction() == avxMaskedLoad32 ? 4 : 8;
                     name = LLVMGetName(callInst->getArgOperand(0), "_load");
@@ -935,7 +968,7 @@ IntrinsicsOpt::runOnBasicBlock(llvm::BasicBlock &bb) {
                         new llvm::StoreInst(rvalue, castPtr, (llvm::Instruction *)NULL);
                     int align;
                     if (g->opt.forceAlignedMemory)
-                        align = 0;
+                        align = g->target->getNativeVectorAlignment();
                     else
                         align = callInst->getCalledFunction() == avxMaskedStore32 ? 4 : 8;
                     storeInst->setAlignment(align);
@@ -957,20 +990,24 @@ IntrinsicsOpt::runOnBasicBlock(llvm::BasicBlock &bb) {
 
 bool
 IntrinsicsOpt::matchesMaskInstruction(llvm::Function *function) {
-    for (unsigned int i = 0; i < maskInstructions.size(); ++i)
+    for (unsigned int i = 0; i < maskInstructions.size(); ++i) {
         if (maskInstructions[i].function != NULL &&
-            function == maskInstructions[i].function)
+            function == maskInstructions[i].function) {
             return true;
+        }
+    }
     return false;
 }
 
 
 IntrinsicsOpt::BlendInstruction *
 IntrinsicsOpt::matchingBlendInstruction(llvm::Function *function) {
-    for (unsigned int i = 0; i < blendInstructions.size(); ++i)
+    for (unsigned int i = 0; i < blendInstructions.size(); ++i) {
         if (blendInstructions[i].function != NULL &&
-            function == blendInstructions[i].function)
+            function == blendInstructions[i].function) {
             return &blendInstructions[i];
+        }
+    }
     return NULL;
 }
 
@@ -1017,12 +1054,12 @@ InstructionSimplifyPass::simplifyBoolVec(llvm::Value *value) {
     if (trunc != NULL) {
         // Convert trunc({sext,zext}(i1 vector)) -> (i1 vector)
         llvm::SExtInst *sext = llvm::dyn_cast<llvm::SExtInst>(value);
-        if (sext && 
+        if (sext &&
             sext->getOperand(0)->getType() == LLVMTypes::Int1VectorType)
             return sext->getOperand(0);
 
         llvm::ZExtInst *zext = llvm::dyn_cast<llvm::ZExtInst>(value);
-        if (zext && 
+        if (zext &&
             zext->getOperand(0)->getType() == LLVMTypes::Int1VectorType)
             return zext->getOperand(0);
     }
@@ -1177,12 +1214,24 @@ char ImproveMemoryOpsPass::ID = 0;
  */
 static llvm::Value *
 lCheckForActualPointer(llvm::Value *v) {
-    if (v == NULL)
+    if (v == NULL) {
         return NULL;
-    else if (llvm::isa<llvm::PointerType>(v->getType()))
+    }
+    else if (llvm::isa<llvm::PointerType>(v->getType())) {
         return v;
-    else if (llvm::isa<llvm::PtrToIntInst>(v))
+    }
+    else if (llvm::isa<llvm::PtrToIntInst>(v)) {
         return v;
+    }
+    else if (llvm::CastInst *ci = llvm::dyn_cast<llvm::CastInst>(v)) {
+        llvm::Value *t = lCheckForActualPointer(ci->getOperand(0));
+        if (t == NULL) {
+            return NULL;
+        }
+        else {
+            return v;
+        }
+    }
     else {
         llvm::ConstantExpr *uce =
             llvm::dyn_cast<llvm::ConstantExpr>(v);
@@ -1200,7 +1249,7 @@ lCheckForActualPointer(llvm::Value *v) {
     pointer value; otherwise it returns NULL.
  */
 static llvm::Value *
-lGetBasePointer(llvm::Value *v) {
+lGetBasePointer(llvm::Value *v, llvm::Instruction *insertBefore) {
     if (llvm::isa<llvm::InsertElementInst>(v) ||
         llvm::isa<llvm::ShuffleVectorInst>(v)) {
         llvm::Value *element = LLVMFlattenInsertChain
@@ -1223,6 +1272,20 @@ lGetBasePointer(llvm::Value *v) {
     }
     else if (llvm::ConstantDataVector *cdv = llvm::dyn_cast<llvm::ConstantDataVector>(v)) {
         return lCheckForActualPointer(cdv->getSplatValue());
+    }
+    // It is a little bit tricky to use operations with pointers, casted to int with another bit size
+    // but sometimes it is useful, so we handle this case here.
+    else if (llvm::CastInst *ci = llvm::dyn_cast<llvm::CastInst>(v)) {
+        llvm::Value *t = lGetBasePointer(ci->getOperand(0), insertBefore);
+        if (t == NULL) {
+            return NULL;
+        }
+        else {
+            return llvm::CastInst::Create(ci->getOpcode(),
+                                              t, ci->getType()->getScalarType(),
+                                              LLVMGetName(t, "_cast"),
+                                              insertBefore);
+        }
     }
 
     return NULL;
@@ -1277,7 +1340,7 @@ lGetBasePtrAndOffsets(llvm::Value *ptrs, llvm::Value **offsets,
         LLVMDumpValue(ptrs);
     }
 
-    llvm::Value *base = lGetBasePointer(ptrs);
+    llvm::Value *base = lGetBasePointer(ptrs, insertBefore);
     if (base != NULL) {
         // We have a straight up varying pointer with no indexing that's
         // actually all the same value.
@@ -1413,29 +1476,29 @@ lExtractConstantOffset(llvm::Value *vec, llvm::Value **constOffset,
         return;
     }
 
-    llvm::SExtInst *sext = llvm::dyn_cast<llvm::SExtInst>(vec);
-    if (sext != NULL) {
-        // Check the sext target.
+    llvm::CastInst *cast = llvm::dyn_cast<llvm::CastInst>(vec);
+    if (cast != NULL) {
+        // Check the cast target.
         llvm::Value *co, *vo;
-        lExtractConstantOffset(sext->getOperand(0), &co, &vo, insertBefore);
+        lExtractConstantOffset(cast->getOperand(0), &co, &vo, insertBefore);
 
-        // make new sext instructions for the two parts
+        // make new cast instructions for the two parts
         if (co == NULL)
             *constOffset = NULL;
         else
-            *constOffset = new llvm::SExtInst(co, sext->getType(),
-                                              LLVMGetName(co, "_sext"),
+            *constOffset = llvm::CastInst::Create(cast->getOpcode(),
+                                              co, cast->getType(),
+                                              LLVMGetName(co, "_cast"),
                                               insertBefore);
         if (vo == NULL)
             *variableOffset = NULL;
         else
-            *variableOffset = new llvm::SExtInst(vo, sext->getType(),
-                                                 LLVMGetName(vo, "_sext"),
+            *variableOffset = llvm::CastInst::Create(cast->getOpcode(),
+                                                 vo, cast->getType(),
+                                                 LLVMGetName(vo, "_cast"),
                                                  insertBefore);
         return;
     }
-
-    // FIXME? handle bitcasts / type casts here
 
     llvm::BinaryOperator *bop = llvm::dyn_cast<llvm::BinaryOperator>(vec);
     if (bop != NULL) {
@@ -1466,6 +1529,33 @@ lExtractConstantOffset(llvm::Value *vec, llvm::Value **constOffset,
                     llvm::BinaryOperator::Create(llvm::Instruction::Add, v0, v1,
                                                  LLVMGetName("add", v0, v1),
                                                  insertBefore);
+            return;
+        }
+        else if (bop->getOpcode() == llvm::Instruction::Shl) {
+            lExtractConstantOffset(op0, &c0, &v0, insertBefore);
+            lExtractConstantOffset(op1, &c1, &v1, insertBefore);
+
+            // Given the product of constant and variable terms, we have:
+            // (c0 + v0) * (2^(c1 + v1))  = c0 * 2^c1 * 2^v1 + v0 * 2^c1 * 2^v1
+            // We can optimize only if v1 == NULL.
+            if ((v1 != NULL) || (c0 == NULL) || (c1 == NULL)) {
+                *constOffset = NULL;
+                *variableOffset = vec;
+            }
+            else if (v0 == NULL) {
+                *constOffset = vec;
+                *variableOffset = NULL;
+            }
+            else {
+                *constOffset =
+                    llvm::BinaryOperator::Create(llvm::Instruction::Shl, c0, c1,
+                                                 LLVMGetName("shl", c0, c1),
+                                                 insertBefore);
+                *variableOffset =
+                    llvm::BinaryOperator::Create(llvm::Instruction::Shl, v0, c1,
+                                                 LLVMGetName("shl", v0, c1),
+                                                 insertBefore);
+            }
             return;
         }
         else if (bop->getOpcode() == llvm::Instruction::Mul) {
@@ -1601,17 +1691,17 @@ lExtract248Scale(llvm::Value *splatOperand, int splatValue,
  */
 static llvm::Value *
 lExtractOffsetVector248Scale(llvm::Value **vec) {
-    llvm::SExtInst *sext = llvm::dyn_cast<llvm::SExtInst>(*vec);
-    if (sext != NULL) {
-        llvm::Value *sextOp = sext->getOperand(0);
-        // Check the sext target.
-        llvm::Value *scale = lExtractOffsetVector248Scale(&sextOp);
+    llvm::CastInst *cast = llvm::dyn_cast<llvm::CastInst>(*vec);
+    if (cast != NULL) {
+        llvm::Value *castOp = cast->getOperand(0);
+        // Check the cast target.
+        llvm::Value *scale = lExtractOffsetVector248Scale(&castOp);
         if (scale == NULL)
             return NULL;
 
-        // make a new sext instruction so that we end up with the right
+        // make a new cast instruction so that we end up with the right
         // type
-        *vec = new llvm::SExtInst(sextOp, sext->getType(), "offset_sext", sext);
+        *vec = llvm::CastInst::Create(cast->getOpcode(), castOp, cast->getType(), "offset_cast", cast);
         return scale;
     }
 
@@ -1848,7 +1938,7 @@ lIs32BitSafeHelper(llvm::Value *v) {
     // handle Adds, SExts, Constant Vectors
     if (llvm::BinaryOperator *bop = llvm::dyn_cast<llvm::BinaryOperator>(v)) {
         if (bop->getOpcode() == llvm::Instruction::Add) {
-            return lIs32BitSafeHelper(bop->getOperand(0)) 
+            return lIs32BitSafeHelper(bop->getOperand(0))
                 && lIs32BitSafeHelper(bop->getOperand(1));
         }
         return false;
@@ -2747,7 +2837,8 @@ lImproveMaskedStore(llvm::CallInst *callInst) {
         lCopyMetadata(lvalue, callInst);
         llvm::Instruction *store =
             new llvm::StoreInst(rvalue, lvalue, false /* not volatile */,
-                                g->opt.forceAlignedMemory ? 0 : info->align);
+                                g->opt.forceAlignedMemory ?
+                                    g->target->getNativeVectorAlignment() : info->align);
         lCopyMetadata(store, callInst);
         llvm::ReplaceInstWithInst(callInst, store);
         return true;
@@ -2810,7 +2901,8 @@ lImproveMaskedLoad(llvm::CallInst *callInst,
                                     callInst);
         llvm::Instruction *load =
             new llvm::LoadInst(ptr, callInst->getName(), false /* not volatile */,
-                               g->opt.forceAlignedMemory ? 0 : info->align,
+                               g->opt.forceAlignedMemory ?
+                                   g->target->getNativeVectorAlignment() : info->align,
                                (llvm::Instruction *)NULL);
         lCopyMetadata(load, callInst);
         llvm::ReplaceInstWithInst(callInst, load);
@@ -3215,6 +3307,9 @@ lEmitLoads(llvm::Value *basePtr, std::vector<CoalescedLoadOp> &loadOps,
         }
         case 4: {
             // 4-wide vector load
+            if (g->opt.forceAlignedMemory) {
+                align = g->target->getNativeVectorAlignment();
+            }
             llvm::VectorType *vt =
                 llvm::VectorType::get(LLVMTypes::Int32Type, 4);
             loadOps[i].load = lGEPAndLoad(basePtr, start, align,
@@ -3223,6 +3318,9 @@ lEmitLoads(llvm::Value *basePtr, std::vector<CoalescedLoadOp> &loadOps,
         }
         case 8: {
             // 8-wide vector load
+            if (g->opt.forceAlignedMemory) {
+                align = g->target->getNativeVectorAlignment();
+            }
             llvm::VectorType *vt =
                 llvm::VectorType::get(LLVMTypes::Int32Type, 8);
             loadOps[i].load = lGEPAndLoad(basePtr, start, align,
@@ -4879,6 +4977,7 @@ lMatchAvgDownInt16(llvm::Value *inst) {
 }
 #endif // !LLVM_3_1 && !LLVM_3_2
 
+
 bool
 PeepholePass::runOnBasicBlock(llvm::BasicBlock &bb) {
     DEBUG_START_PASS("PeepholePass");
@@ -4923,3 +5022,276 @@ static llvm::Pass *
 CreatePeepholePass() {
   return new PeepholePass;
 }
+
+/** Given an llvm::Value known to be an integer, return its value as
+    an int64_t.
+*/
+static int64_t
+lGetIntValue(llvm::Value *offset) {
+  llvm::ConstantInt *intOffset = llvm::dyn_cast<llvm::ConstantInt>(offset);
+  Assert(intOffset && (intOffset->getBitWidth() == 32 ||
+                       intOffset->getBitWidth() == 64));
+  return intOffset->getSExtValue();
+}
+
+///////////////////////////////////////////////////////////////////////////
+// ReplaceStdlibShiftPass
+
+class ReplaceStdlibShiftPass : public llvm::BasicBlockPass {
+public:
+    static char ID;
+    ReplaceStdlibShiftPass() : BasicBlockPass(ID) {
+    }
+
+    const char *getPassName() const { return "Resolve \"replace extract insert chains\""; }
+    bool runOnBasicBlock(llvm::BasicBlock &BB);
+
+};
+
+char ReplaceStdlibShiftPass::ID = 0;
+
+bool
+ReplaceStdlibShiftPass::runOnBasicBlock(llvm::BasicBlock &bb) {
+    DEBUG_START_PASS("ReplaceStdlibShiftPass");
+    bool modifiedAny = false;
+
+    llvm::Function *shifts[6];
+    shifts[0] = m->module->getFunction("__shift_i8");
+    shifts[1] = m->module->getFunction("__shift_i16");
+    shifts[2] = m->module->getFunction("__shift_i32");
+    shifts[3] = m->module->getFunction("__shift_i64");
+    shifts[4] = m->module->getFunction("__shift_float");
+    shifts[5] = m->module->getFunction("__shift_double");
+
+    for (llvm::BasicBlock::iterator iter = bb.begin(), e = bb.end(); iter != e; ++iter) {
+        llvm::Instruction *inst = &*iter;
+
+        if (llvm::CallInst *ci = llvm::dyn_cast<llvm::CallInst>(inst)) {
+          llvm::Function *func = ci->getCalledFunction();
+          for (int i = 0; i < 6; i++) {
+            if (shifts[i] && (shifts[i] == func)) {
+              // we matched a call
+              llvm::Value *shiftedVec = ci->getArgOperand(0);
+              llvm::Value *shiftAmt = ci->getArgOperand(1);
+              if (llvm::isa<llvm::Constant>(shiftAmt)) {
+                int vectorWidth = g->target->getVectorWidth();
+                int * shuffleVals = new int[vectorWidth];
+                int shiftInt = lGetIntValue(shiftAmt);
+                for (int i = 0; i < vectorWidth; i++) {
+                  int s = i + shiftInt;
+                  s = (s < 0) ? vectorWidth : s;
+                  s = (s >= vectorWidth) ? vectorWidth : s;
+                  shuffleVals[i] = s;
+                }
+                llvm::Value *shuffleIdxs = LLVMInt32Vector(shuffleVals);
+                llvm::Value *zeroVec = llvm::ConstantAggregateZero::get(shiftedVec->getType());
+                llvm::Value *shuffle = new llvm::ShuffleVectorInst(shiftedVec, zeroVec,
+                                                                   shuffleIdxs, "vecShift", ci);
+                ci->replaceAllUsesWith(shuffle);
+                modifiedAny = true;
+                delete [] shuffleVals;
+              } else {
+                PerformanceWarning(SourcePos(), "Stdlib shift() called without constant shift amount.");
+              }
+            }
+          }
+        }
+    }
+
+    DEBUG_END_PASS("ReplaceStdlibShiftPass");
+
+    return modifiedAny;
+}
+
+
+static llvm::Pass *
+CreateReplaceStdlibShiftPass() {
+    return new ReplaceStdlibShiftPass();
+}
+
+
+
+///////////////////////////////////////////////////////////////////////////////
+// FixBooleanSelect
+//
+// The problem is that in LLVM 3.3, optimizer doesn't like
+// the following instruction sequence:
+//    %cmp = fcmp olt <8 x float> %a, %b
+//    %sext_cmp = sext <8 x i1> %cmp to <8 x i32>
+//    %new_mask = and <8 x i32> %sext_cmp, %mask
+// and optimizes it to the following:
+//    %cmp = fcmp olt <8 x float> %a, %b
+//    %cond = select <8 x i1> %cmp, <8 x i32> %mask, <8 x i32> zeroinitializer
+//
+// It wouldn't be a problem if codegen produced good code for it. But it
+// doesn't, especially for vectors larger than native vectors.
+//
+// This optimization reverts this pattern and should be the last one before
+// code gen.
+//
+// Note that this problem was introduced in LLVM 3.3. But in LLVM 3.4 it was
+// fixed. See commit r194542.
+//
+// After LLVM 3.3 this optimization should probably stay for experimental
+// purposes and code should be compared with and without this optimization from
+// time to time to make sure that LLVM does right thing.
+///////////////////////////////////////////////////////////////////////////////
+
+class FixBooleanSelectPass : public llvm::FunctionPass {
+public:
+    static char ID;
+    FixBooleanSelectPass() :FunctionPass(ID) {}
+
+    const char *getPassName() const { return "Resolve \"replace extract insert chains\""; }
+    bool runOnFunction(llvm::Function &F);
+
+private:
+    llvm::Instruction* fixSelect(llvm::SelectInst* sel, llvm::SExtInst* sext);
+};
+
+char FixBooleanSelectPass::ID = 0;
+
+llvm::Instruction* FixBooleanSelectPass::fixSelect(llvm::SelectInst* sel, llvm::SExtInst* sext) {
+    // Select instruction result type and its integer equivalent
+    llvm::VectorType *orig_type = llvm::dyn_cast<llvm::VectorType>(sel->getType());
+    llvm::VectorType *int_type = llvm::VectorType::getInteger(orig_type);
+
+    // Result value and optional pointer to instruction to delete
+    llvm::Instruction *result = 0, *optional_to_delete = 0;
+
+    // It can be vector of integers or vector of floating point values.
+    if (orig_type->getElementType()->isIntegerTy()) {
+        // Generate sext+and, remove select.
+        result = llvm::BinaryOperator::CreateAnd(sext, sel->getTrueValue(), "and_mask", sel);
+    } else {
+        llvm::BitCastInst* bc = llvm::dyn_cast<llvm::BitCastInst>(sel->getTrueValue());
+
+        if (bc && bc->hasOneUse() && bc->getSrcTy()->isIntOrIntVectorTy() && bc->getSrcTy()->isVectorTy() &&
+                llvm::isa<llvm::Instruction>(bc->getOperand(0)) &&
+                llvm::dyn_cast<llvm::Instruction>(bc->getOperand(0))->getParent() == sel->getParent()) {
+            // Bitcast is casting form integer type, it's operand is instruction, which is located in the same basic block (otherwise it's unsafe to use it).
+            // bitcast+select => sext+and+bicast
+            // Create and
+            llvm::BinaryOperator* and_inst = llvm::BinaryOperator::CreateAnd(sext, bc->getOperand(0), "and_mask", sel);
+            // Bitcast back to original type
+            result = new llvm::BitCastInst(and_inst, sel->getType(), "bitcast_mask_out", sel);
+            // Original bitcast will be removed
+            optional_to_delete = bc;
+        } else {
+            // General case: select => bitcast+sext+and+bitcast
+            // Bitcast
+            llvm::BitCastInst* bc_in = new llvm::BitCastInst(sel->getTrueValue(), int_type, "bitcast_mask_in", sel);
+            // And
+            llvm::BinaryOperator* and_inst = llvm::BinaryOperator::CreateAnd(sext, bc_in, "and_mask", sel);
+            // Bitcast back to original type
+            result = new llvm::BitCastInst(and_inst, sel->getType(), "bitcast_mask_out", sel);
+        }
+    }
+
+    // Done, finalize.
+    sel->replaceAllUsesWith(result);
+    sel->eraseFromParent();
+    if (optional_to_delete) {
+        optional_to_delete->eraseFromParent();
+    }
+
+    return result;
+}
+
+bool
+FixBooleanSelectPass::runOnFunction(llvm::Function &F) {
+    bool modifiedAny = false;
+
+    // LLVM 3.3 only
+#if defined(LLVM_3_3)
+
+    // Don't optimize generic targets.
+    if (g->target->getISA() == Target::GENERIC) {
+        return false;
+    }
+
+    for (llvm::Function::iterator I = F.begin(), E = F.end();
+         I != E; ++I) {
+        llvm::BasicBlock* bb = &*I;
+        for (llvm::BasicBlock::iterator iter = bb->begin(), e = bb->end(); iter != e; ++iter) {
+            llvm::Instruction *inst = &*iter;
+
+            llvm::CmpInst *cmp = llvm::dyn_cast<llvm::CmpInst>(inst);
+
+            if (cmp && 
+                cmp->getType()->isVectorTy() &&
+                cmp->getType()->getVectorElementType()->isIntegerTy(1)) {
+
+                // Search for select instruction uses.
+                int selects = 0;
+                llvm::VectorType* sext_type = 0;
+                for (llvm::Instruction::use_iterator it=cmp->use_begin(); it!=cmp->use_end(); ++it ) {
+                    llvm::SelectInst* sel = llvm::dyn_cast<llvm::SelectInst>(*it);
+                    if (sel &&
+                        sel->getType()->isVectorTy() &&
+                        sel->getType()->getScalarSizeInBits() > 1) {
+                        selects++;
+                        // We pick the first one, but typical case when all select types are the same.
+                        sext_type = llvm::dyn_cast<llvm::VectorType>(sel->getType());
+                        break;
+                    }
+                }
+                if (selects == 0) {
+                    continue;
+                }
+                // Get an integer equivalent, if it's not yet an integer.
+                sext_type = llvm::VectorType::getInteger(sext_type);
+
+                // Do transformation
+                llvm::BasicBlock::iterator iter_copy=iter;
+                llvm::Instruction* next_inst = &*(++iter_copy);
+                // Create or reuse sext
+                llvm::SExtInst* sext = llvm::dyn_cast<llvm::SExtInst>(next_inst);
+                if (sext &&
+                    sext->getOperand(0) == cmp &&
+                    sext->getDestTy() == sext_type) {
+                    // This sext can be reused
+                } else {
+                    if (next_inst) {
+                        sext = new llvm::SExtInst(cmp, sext_type, "sext_cmp", next_inst);
+                    } else {
+                        sext = new llvm::SExtInst(cmp, sext_type, "sext_cmp", bb);
+                    }
+                }
+
+                // Walk and fix selects
+                std::vector<llvm::SelectInst*> sel_uses;
+                for (llvm::Instruction::use_iterator it=cmp->use_begin(); it!=cmp->use_end(); ++it) {
+                    llvm::SelectInst* sel = llvm::dyn_cast<llvm::SelectInst>(*it);
+                    if (sel &&
+                        sel->getType()->getScalarSizeInBits() == sext_type->getScalarSizeInBits()) {
+
+                        // Check that second operand is zero.
+                        llvm::Constant* false_cond = llvm::dyn_cast<llvm::Constant>(sel->getFalseValue());
+                        if (false_cond &&
+                            false_cond->isZeroValue()) {
+                            sel_uses.push_back(sel);
+                            modifiedAny = true;
+                        }
+                    }
+                }
+
+                for (int i=0; i<sel_uses.size(); i++) {
+                    fixSelect(sel_uses[i], sext);
+                }
+            }
+        }
+    }
+
+#endif // LLVM 3.3
+
+    return modifiedAny;
+}
+
+
+static llvm::Pass *
+CreateFixBooleanSelectPass() {
+    return new FixBooleanSelectPass();
+}
+
+

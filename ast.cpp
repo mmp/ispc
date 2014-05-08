@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2011-2012, Intel Corporation
+  Copyright (c) 2011-2013, Intel Corporation
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -223,7 +223,8 @@ WalkAST(ASTNode *node, ASTPreCallBackFunc preFunc, ASTPostCallBackFunc postFunc,
         else if ((fce = dynamic_cast<FunctionCallExpr *>(node)) != NULL) {
             fce->func = (Expr *)WalkAST(fce->func, preFunc, postFunc, data);
             fce->args = (ExprList *)WalkAST(fce->args, preFunc, postFunc, data);
-            fce->launchCountExpr = (Expr *)WalkAST(fce->launchCountExpr, preFunc,
+            for (int k = 0; k < 3; k++)
+              fce->launchCountExpr[0] = (Expr *)WalkAST(fce->launchCountExpr[0], preFunc,
                                                    postFunc, data);
         }
         else if ((ie = dynamic_cast<IndexExpr *>(node)) != NULL) {

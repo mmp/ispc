@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2010-2013, Intel Corporation
+  Copyright (c) 2010-2014, Intel Corporation
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -47,9 +47,9 @@
   #include <llvm/IR/InstrTypes.h>
   #include <llvm/IR/Instructions.h>
 #endif
-#if defined(LLVM_3_1)
-  #include <llvm/Analysis/DebugInfo.h>
-  #include <llvm/Analysis/DIBuilder.h>
+#if defined(LLVM_3_5)
+  #include <llvm/IR/DebugInfo.h>
+  #include <llvm/IR/DIBuilder.h>
 #else
   #include <llvm/DebugInfo.h>
   #include <llvm/DIBuilder.h>
@@ -542,7 +542,7 @@ public:
         he given argument values. */
     llvm::Value *LaunchInst(llvm::Value *callee,
                             std::vector<llvm::Value *> &argVals,
-                            llvm::Value *launchCount);
+                            llvm::Value *launchCount[3]);
 
     void SyncInst();
 

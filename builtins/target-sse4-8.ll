@@ -41,6 +41,7 @@ stdlib_core()
 packed_load_and_store()
 scans()
 int64minmax()
+saturation_arithmetic()
 
 include(`target-sse4-common.ll')
 
@@ -490,3 +491,12 @@ define <16 x i16> @__avg_up_uint16(<16 x i16>, <16 x i16>) nounwind readnone {
 define_avg_up_int8()
 define_avg_up_int16()
 define_down_avgs()
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; reciprocals in double precision, if supported
+
+rsqrtd_decl()
+rcpd_decl()
+
+transcendetals_decl()
+trigonometry_decl()

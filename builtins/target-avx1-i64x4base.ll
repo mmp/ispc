@@ -1,4 +1,4 @@
-;;  Copyright (c) 2013, Intel Corporation
+;;  Copyright (c) 2013-2014, Intel Corporation
 ;;  All rights reserved.
 ;;
 ;;  Redistribution and use in source and binary forms, with or without
@@ -40,6 +40,7 @@ stdlib_core()
 packed_load_and_store()
 scans()
 int64minmax()
+saturation_arithmetic()
 
 include(`target-avx-common.ll')
 
@@ -511,3 +512,8 @@ define <4 x double> @__max_varying_double(<4 x double>, <4 x double>) nounwind r
   ret <4 x double> %call
 }
 
+rsqrtd_decl()
+rcpd_decl()
+
+transcendetals_decl()
+trigonometry_decl()

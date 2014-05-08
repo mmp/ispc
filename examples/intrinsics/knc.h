@@ -95,6 +95,7 @@ typedef struct PRE_ALIGN(64) __vec16_f {
 typedef struct PRE_ALIGN(64) __vec16_d {
     FORCEINLINE __vec16_d() : v1(_mm512_undefined_pd()), v2(_mm512_undefined_pd()) {}
     FORCEINLINE __vec16_d(const __vec16_d &o) : v1(o.v1), v2(o.v2) {}
+    FORCEINLINE __vec16_d(const __m512d _v1, const __m512d _v2) : v1(_v1), v2(_v2) {}
     FORCEINLINE __vec16_d& operator =(const __vec16_d &o) { v1=o.v1; v2=o.v2; return *this; }
     FORCEINLINE __vec16_d(double v00, double v01, double v02, double v03, 
                           double v04, double v05, double v06, double v07,
@@ -598,8 +599,10 @@ template <> static FORCEINLINE void __store<64>(__vec16_i32 *p, __vec16_i32 v) {
 // int64
 ///////////////////////////////////////////////////////////////////////////
 
-static FORCEINLINE int64_t __extract_element(__vec16_i64 v, uint32_t index) {
-    return (uint64_t(((int32_t *)&v.v_hi)[index])<<32) | (uint64_t(((int32_t *)&v.v_lo)[index]));
+static FORCEINLINE int64_t __extract_element(const __vec16_i64 &v, uint32_t index)
+{
+    uint *src = (uint *)&v;
+    return src[index+16] | (int64_t(src[index]) << 32);
 }
 
 static FORCEINLINE void __insert_element(__vec16_i64 *v, uint32_t index, int64_t val) {
@@ -748,12 +751,6 @@ static FORCEINLINE __vec16_i64 __select(__vec16_i1 mask,
     ret.v_hi = _mm512_mask_mov_epi32(b.v_hi, mask, a.v_hi);
     ret.v_lo = _mm512_mask_mov_epi32(b.v_lo, mask, a.v_lo);
     return ret;
-}
-
-static FORCEINLINE int64_t __extract_element(const __vec16_i64 &v, uint32_t index)
-{
-    uint *src = (uint *)&v;
-    return src[index+16] | (int64_t(src[index]) << 32);
 }
 
 template <class RetVecType> RetVecType __smear_i64(const int64_t &l);
@@ -1260,6 +1257,13 @@ static FORCEINLINE __vec16_i64 __cast_zext(const __vec16_i64 &, const __vec16_i3
     return __vec16_i64(val.v, _mm512_setzero_epi32());
 }
 
+static FORCEINLINE __vec16_i32 __cast_sext(const __vec16_i32 &, const __vec16_i1 &val)
+{
+  __vec16_i32 ret = _mm512_setzero_epi32();
+  __vec16_i32 one = _mm512_set1_epi32(-1);
+  return _mm512_mask_mov_epi32(ret, val, one);
+}
+
 static FORCEINLINE __vec16_i32 __cast_zext(const __vec16_i32 &, const __vec16_i1 &val)
 {
     __vec16_i32 ret = _mm512_setzero_epi32();
@@ -1465,6 +1469,17 @@ static FORCEINLINE __vec16_f __rcp_varying_float(__vec16_f v) {
     return _mm512_recip_ps(v);
 #endif
 }
+static FORCEINLINE __vec16_d __rcp_varying_double(__vec16_d x) {
+  __vec16_d y;
+  for (int i = 0; i < 16; i++)
+    __insert_element(&y, i, 1.0/__extract_element(x,i));
+  return y;
+}
+static FORCEINLINE double __rcp_uniform_double(double v) 
+{
+  return 1.0/v;
+}
+
 
 static FORCEINLINE __vec16_f __rsqrt_varying_float(__vec16_f v) {
 #ifdef ISPC_FAST_MATH
@@ -1473,18 +1488,17 @@ static FORCEINLINE __vec16_f __rsqrt_varying_float(__vec16_f v) {
     return _mm512_invsqrt_ps(v);
 #endif
 }
-
-static FORCEINLINE __vec16_f __exp_varying_float(__vec16_f v) {
-  return _mm512_exp_ps(v);
+static FORCEINLINE __vec16_d __rsqrt_varying_double(__vec16_d x) {
+  __vec16_d y;
+  for (int i = 0; i < 16; i++)
+    __insert_element(&y, i, 1.0/sqrt(__extract_element(x,i)));
+  return y;
+}
+static FORCEINLINE double __rsqrt_uniform_double(double v) 
+{
+  return 1.0/v;
 }
 
-static FORCEINLINE __vec16_f __log_varying_float(__vec16_f v) {
-  return _mm512_log_ps(v);
-}
-
-static FORCEINLINE __vec16_f __pow_varying_float(__vec16_f a, __vec16_f b) {
-  return _mm512_pow_ps(a, b);
-}
 
 ///////////////////////////////////////////////////////////////////////////
 // bit ops
@@ -1878,6 +1892,11 @@ static FORCEINLINE int32_t __packed_store_active(uint32_t *p, __vec16_i32 val,
     return _mm_countbits_32(uint32_t(mask));
 }
 
+static FORCEINLINE int32_t __packed_store_active2(uint32_t *p, __vec16_i32 val, __vec16_i1 mask)
+{
+  return __packed_store_active(p, val, mask);
+}
+
 ///////////////////////////////////////////////////////////////////////////
 // prefetch
 ///////////////////////////////////////////////////////////////////////////
@@ -2138,6 +2157,39 @@ static FORCEINLINE uint64_t __clock() {
   return (uint64_t)high << 32 | low;
 }
 #endif // !WIN32
+
+///////////////////////////////////////////////////////////////////////////
+// Transcendentals
+
+
+#define TRANSCENDENTALS(op) \
+static FORCEINLINE __vec16_f __##op##_varying_float(__vec16_f v) { return _mm512_##op##_ps(v); } \
+static FORCEINLINE float __##op##_uniform_float(float v) { return op##f(v); } \
+static FORCEINLINE __vec16_d __##op##_varying_double(__vec16_d v) { return __vec16_d(_mm512_##op##_pd(v.v1),_mm512_##op##_pd(v.v2)); } \
+static FORCEINLINE double __##op##_uniform_double(double a) { return op(a); }
+
+TRANSCENDENTALS(log)
+TRANSCENDENTALS(exp)
+
+static FORCEINLINE float __pow_uniform_float(float a, float b) {    return powf(a, b);}
+static FORCEINLINE __vec16_f __pow_varying_float(__vec16_f a, __vec16_f b) { return _mm512_pow_ps(a,b); }
+static FORCEINLINE double __pow_uniform_double(double a, double b) {    return pow(a,b);}
+static FORCEINLINE __vec16_d __pow_varying_double(__vec16_d a, __vec16_d b) { return __vec16_d(_mm512_pow_pd(a.v1,b.v1),_mm512_pow_pd(a.v2,b.v2)); }
+
+///////////////////////////////////////////////////////////////////////////
+// Trigonometry
+
+TRANSCENDENTALS(sin)
+TRANSCENDENTALS(asin)
+TRANSCENDENTALS(cos)
+TRANSCENDENTALS(acos)
+TRANSCENDENTALS(tan)
+TRANSCENDENTALS(atan)
+
+static FORCEINLINE float __atan2_uniform_float(float a, float b) {    return atan2f(a, b);}
+static FORCEINLINE __vec16_f __atan2_varying_float(__vec16_f a, __vec16_f b) { return _mm512_atan2_ps(a,b); }
+static FORCEINLINE double __atan2_uniform_double(double a, double b) {    return atan2(a,b);}
+static FORCEINLINE __vec16_d __atan2_varying_double(__vec16_d a, __vec16_d b) { return __vec16_d(_mm512_atan2_pd(a.v1,b.v1),_mm512_atan2_pd(a.v2,b.v2)); }
 
 #undef FORCEINLINE
 #undef PRE_ALIGN

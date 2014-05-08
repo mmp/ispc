@@ -1,4 +1,4 @@
-;;  Copyright (c) 2010-2012, Intel Corporation
+;;  Copyright (c) 2010-2013, Intel Corporation
 ;;  All rights reserved.
 ;;
 ;;  Redistribution and use in source and binary forms, with or without
@@ -38,6 +38,8 @@ include(`target-avx.ll')
 ifelse(LLVM_VERSION, `LLVM_3_0', `rdrand_decls()',
        LLVM_VERSION, `LLVM_3_1', `rdrand_decls()',
        `rdrand_definition()')
+
+saturation_arithmetic()
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; int min/max

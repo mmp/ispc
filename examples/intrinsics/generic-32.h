@@ -1138,8 +1138,16 @@ static FORCEINLINE float __rsqrt_uniform_float(float v) {
     return 1.f / sqrtf(v);
 }
 
+static FORCEINLINE double __rsqrt_uniform_double(double v) {
+    return 1.0 / sqrt(v);
+}
+
 static FORCEINLINE float __rcp_uniform_float(float v) {
     return 1.f / v;
+}
+
+static FORCEINLINE double __rcp_uniform_double(double v) {
+    return 1.0 / v;
 }
 
 static FORCEINLINE float __sqrt_uniform_float(float v) {
@@ -1151,7 +1159,9 @@ static FORCEINLINE double __sqrt_uniform_double(double v) {
 }
 
 UNARY_OP(__vec32_f, __rcp_varying_float, __rcp_uniform_float)
+UNARY_OP(__vec32_d, __rcp_varying_double, __rcp_uniform_double)
 UNARY_OP(__vec32_f, __rsqrt_varying_float, __rsqrt_uniform_float)
+UNARY_OP(__vec32_d, __rsqrt_varying_double, __rsqrt_uniform_double)
 UNARY_OP(__vec32_f, __sqrt_varying_float, __sqrt_uniform_float)
 UNARY_OP(__vec32_d, __sqrt_varying_double, __sqrt_uniform_double)
 
@@ -1523,31 +1533,38 @@ static FORCEINLINE int32_t __packed_store_active(int32_t *ptr, __vec32_i32 val,
     return count;
 }
 
+
+static FORCEINLINE int32_t __packed_store_active2(int32_t *ptr, __vec32_i32 val,
+                                                 __vec32_i1 mask) {
+    int count = 0;
+    int32_t *ptr_ = ptr;
+    for (int i = 0; i < 32; ++i) {
+        *ptr = val.v[i];
+        ptr += mask.v & 1;
+        mask.v = mask.v >> 1;
+    }
+    return ptr - ptr_;
+}
+
+
 static FORCEINLINE int32_t __packed_load_active(uint32_t *ptr,
                                                 __vec32_i32 *val,
                                                 __vec32_i1 mask) {
-    int count = 0; 
-    for (int i = 0; i < 32; ++i) {
-        if ((mask.v & (1 << i)) != 0) {
-            val->v[i] = *ptr++;
-            ++count;
-        }
-    }
-    return count;
+    return __packed_load_active((int32_t *)ptr, val, mask);
 }
 
 
 static FORCEINLINE int32_t __packed_store_active(uint32_t *ptr, 
                                                  __vec32_i32 val,
                                                  __vec32_i1 mask) {
-    int count = 0; 
-    for (int i = 0; i < 32; ++i) {
-        if ((mask.v & (1 << i)) != 0) {
-            *ptr++ = val.v[i];
-            ++count;
-        }
-    }
-    return count;
+    return __packed_store_active((int32_t *)ptr, val, mask);
+}
+
+
+static FORCEINLINE int32_t __packed_store_active2(uint32_t *ptr,
+                                                 __vec32_i32 val,
+                                                 __vec32_i1 mask) {
+    return __packed_store_active2((int32_t *)ptr, val, mask);
 }
 
 

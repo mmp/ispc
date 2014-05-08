@@ -1,14 +1,48 @@
+;;  Copyright (c) 2012-2013, Intel Corporation
+;;  All rights reserved.
+;;
+;;  Redistribution and use in source and binary forms, with or without
+;;  modification, are permitted provided that the following conditions are
+;;  met:
+;;
+;;    * Redistributions of source code must retain the above copyright
+;;      notice, this list of conditions and the following disclaimer.
+;;
+;;    * Redistributions in binary form must reproduce the above copyright
+;;      notice, this list of conditions and the following disclaimer in the
+;;      documentation and/or other materials provided with the distribution.
+;;
+;;    * Neither the name of Intel Corporation nor the names of its
+;;      contributors may be used to endorse or promote products derived from
+;;      this software without specific prior written permission.
+;;
+;;
+;;   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS
+;;   IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
+;;   TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+;;   PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER
+;;   OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+;;   EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+;;   PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+;;   PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+;;   LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+;;   NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+;;   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.  
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Define the standard library builtins for the NOVEC target
 define(`MASK',`i32')
 define(`WIDTH',`1')
 include(`util.m4')
+rdrand_decls()
 ; Define some basics for a 1-wide target
 stdlib_core()
 packed_load_and_store()
 scans()
 int64minmax()
 aossoa()
+saturation_arithmetic_novec()
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; masked store
@@ -655,7 +689,7 @@ define  <1 x float> @__rsqrt_varying_float(<1 x float> %v) nounwind readonly alw
 declare  <1 x float> @__svml_sind(<1 x float>) nounwind readnone alwaysinline 
 declare  <1 x float> @__svml_asind(<1 x float>) nounwind readnone alwaysinline 
 declare  <1 x float> @__svml_cosd(<1 x float>) nounwind readnone alwaysinline 
-declare  void @__svml_sincosd(<1 x float>, <1 x float> *, <1 x float> *) nounwind readnone alwaysinline 
+declare  void @__svml_sincosd(<1 x float>, <1 x double> *, <1 x double> *) nounwind readnone alwaysinline
 declare  <1 x float> @__svml_tand(<1 x float>) nounwind readnone alwaysinline 
 declare  <1 x float> @__svml_atand(<1 x float>) nounwind readnone alwaysinline 
 declare  <1 x float> @__svml_atan2d(<1 x float>, <1 x float>) nounwind readnone alwaysinline 
@@ -991,3 +1025,11 @@ declare <WIDTH x i16> @__float_to_half_varying(<WIDTH x float> %v) nounwind read
 
 define_avgs()
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; reciprocals in double precision, if supported
+
+rsqrtd_decl()
+rcpd_decl()
+
+transcendetals_decl()
+trigonometry_decl()

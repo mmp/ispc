@@ -1,4 +1,4 @@
-;;  Copyright (c) 2010-2012, Intel Corporation
+;;  Copyright (c) 2010-2014, Intel Corporation
 ;;  All rights reserved.
 ;;
 ;;  Redistribution and use in source and binary forms, with or without
@@ -44,6 +44,7 @@ stdlib_core()
 packed_load_and_store()
 scans()
 int64minmax()
+saturation_arithmetic()
 
 include(`target-sse4-common.ll')
 
@@ -592,3 +593,11 @@ define <8 x double> @__max_varying_double(<8 x double>, <8 x double>) nounwind r
 
 define_avgs()
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; reciprocals in double precision, if supported
+
+rsqrtd_decl()
+rcpd_decl()
+
+transcendetals_decl()
+trigonometry_decl()

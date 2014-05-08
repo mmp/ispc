@@ -1,4 +1,4 @@
-;;  Copyright (c) 2010-2012, Intel Corporation
+;;  Copyright (c) 2010-2014, Intel Corporation
 ;;  All rights reserved.
 ;;
 ;;  Redistribution and use in source and binary forms, with or without
@@ -40,6 +40,7 @@ stdlib_core()
 packed_load_and_store()
 scans()
 int64minmax()
+saturation_arithmetic()
 
 include(`target-avx-common.ll')
 
@@ -687,3 +688,12 @@ define <16 x double> @__max_varying_double(<16 x double>, <16 x double>) nounwin
   binary4to16(ret, double, @llvm.x86.avx.max.pd.256, %0, %1)
   ret <16 x double> %ret
 }
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; reciprocals in double precision, if supported
+
+rsqrtd_decl()
+rcpd_decl()
+
+transcendetals_decl()
+trigonometry_decl()

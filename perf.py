@@ -42,6 +42,10 @@ def print_file(line):
 def build_test(commands):
     os.system(commands[4])
     test = os.system(commands[1])
+    if is_windows:
+        common.remove_if_exists(".\\X64\\Release1")
+        if (test == 0):
+            os.rename(".\\X64\\Release", ".\\X64\\Release1")
     if options.ref:
         ref = os.system(commands[3])
     return (options.ref and ref) or test
@@ -95,16 +99,19 @@ def analyse_test(c1, c2, test, b_serial, perf_temp_n):
             j+=1
         if "million cycles" in line:
             if j == c1:
-                line = line.replace("]","[")
-                line = line.split("[")
-                number = float(line[3])
-                if "tasks" in line[1]:
-                    absolute_tasks.append(number)
+                if line[0] == '@':
+                    print_debug(line, True, perf_log)
                 else:
-                    if "ispc" in line[1]:
-                        absolute_ispc.append(number)
-                if "serial" in line[1]:
-                    serial.append(number)
+                    line = line.replace("]","[")
+                    line = line.split("[")
+                    number = float(line[3])
+                    if "tasks" in line[1]:
+                        absolute_tasks.append(number)
+                    else:
+                        if "ispc" in line[1]:
+                            absolute_ispc.append(number)
+                    if "serial" in line[1]:
+                        serial.append(number)
 
     if len(ispc) != 0:
         if len(tasks) != 0:
@@ -156,16 +163,16 @@ def cpu_check():
             R = c_line.split(' ')
             cpu_percent = float(R[1]) * 3
     else:
-	os.system("wmic cpu get loadpercentage /value > cpu_temp")
-	c = open("cpu_temp", 'r')
+        os.system("wmic cpu get loadpercentage /value > cpu_temp")
+        c = open("cpu_temp", 'r')
         c_lines = c.readlines()
-	c.close()
-	os.remove("cpu_temp")
-	t = "0"
-	for i in c_lines[2]:
+        c.close()
+        os.remove("cpu_temp")
+        t = "0"
+        for i in c_lines[2]:
             if i.isdigit():
                 t = t + i
-	cpu_percent = int(t)
+        cpu_percent = int(t)
     return cpu_percent
 
 #returns geomean of list
@@ -174,7 +181,10 @@ def geomean(par):
     l = len(par)
     for i in range(l):
         temp = temp * par[i]
-    temp = temp ** (1.0/l)
+    if l != 0:
+        temp = temp ** (1.0/l)
+    else:
+        temp = 0
     return round(temp, 2)
 
 #takes an answer struct and print it.
@@ -186,18 +196,30 @@ def geomean(par):
 #test[4] - list of absolute results with tasks
 #test[5] - list of absolute time without ISPC (serial)
 #test[1..4] may be empty
-def print_answer(answer):
+def print_answer(answer, target_number):
     filelist = []
     print_debug("--------------------------------------------------------------------------\n", s, perf_log)
     print_debug("test name:\t    ISPC speedup: ISPC + tasks speedup: | " + 
         "    ISPC time:    ISPC + tasks time:  serial:\n", s, perf_log)
-    filelist.append("test name,ISPC speedup,diff," +
-        "ISPC + tasks speedup,diff,ISPC time,diff,ISPC + tasks time,diff,serial,diff\n")
+    if target_number > 1:
+        if options.output == "":
+            options.output = "targets.csv"
+        filelist.append("test name,ISPC speedup" + "," * target_number + "ISPC + tasks speedup\n")
+        filelist.append("," + options.perf_target + "," + options.perf_target + "\n")
+    else:
+        filelist.append("test name,ISPC speedup,diff," +
+            "ISPC + tasks speedup,diff,ISPC time,diff,ISPC + tasks time,diff,serial,diff\n")
     max_t = [0,0,0,0,0]
     diff_t = [0,0,0,0,0]
-    geomean_t = [0,0,0,0,0]
-    list_of_max = [[],[],[],[],[]]
+    geomean_t = []
+    list_of_max = []
+    for i1 in range(target_number):
+        geomean_t.append([0,0,0,0,0])
+        list_of_max.append([[],[],[],[],[]])
     list_of_compare = [[],[],[],[],[],[]]
+    target_k = 0
+    temp_str_1 = ""
+    temp_str_2 = ""
     for i in range(len(answer)):
         list_of_compare[0].append(answer[i][0])
         for t in range(1,6):
@@ -212,7 +234,7 @@ def print_answer(answer):
                     mm = min(answer[i][t])
                 list_of_compare[t].append(mm)
                 max_t[t-1] = '%.2f' % mm
-                list_of_max[t-1].append(mm)
+                list_of_max[i % target_number][t-1].append(mm)
                 diff_t[t-1] = '%.2f' % (max(answer[i][t]) - min(answer[i][t]))
         print_debug("%s:\n" % answer[i][0], s, perf_log)
         print_debug("\t\tmax:\t%5s\t\t%10s\t|min:%10s\t%10s\t%10s\n" %
@@ -224,17 +246,37 @@ def print_answer(answer):
                 max_t[t] = ""
             if diff_t[t] == "n/a":
                 diff_t[t] = ""
-        filelist.append(answer[i][0] + "," +
+        if target_number > 1:
+            if target_k == 0:
+                temp_str_1 = answer[i][0] + ","
+                temp_str_2 = ""
+            temp_str_1 += max_t[0] + ","
+            temp_str_2 += max_t[1] + ","
+            target_k = target_k + 1
+            if target_k == target_number:
+                filelist.append(temp_str_1 + temp_str_2[:-1] + "\n")
+                target_k = 0
+        else:
+            filelist.append(answer[i][0] + "," +
                         max_t[0] + "," + diff_t[0] + "," +  max_t[1] + "," + diff_t[1] + "," +
                         max_t[2] + "," + diff_t[2] + "," +  max_t[3] + "," + diff_t[3] + "," +
                         max_t[4] + "," + diff_t[4] + "\n")
     for i in range(0,5):
-        geomean_t[i] = geomean(list_of_max[i])
+        for i1 in range(target_number):
+            geomean_t[i1][i] = geomean(list_of_max[i1][i])
     print_debug("---------------------------------------------------------------------------------\n", s, perf_log)
     print_debug("Geomean:\t\t%5s\t\t%10s\t|%14s\t%10s\t%10s\n" %
-        (geomean_t[0], geomean_t[1], geomean_t[2], geomean_t[3], geomean_t[4]), s, perf_log)
-    filelist.append("Geomean," + str(geomean_t[0]) + ",," + str(geomean_t[1])
-        + ",," + str(geomean_t[2]) + ",," + str(geomean_t[3]) + ",," + str(geomean_t[4]) + "\n")
+        (geomean_t[0][0], geomean_t[0][1], geomean_t[0][2], geomean_t[0][3], geomean_t[0][4]), s, perf_log)
+    if target_number > 1:
+        temp_str_1 = "Geomean,"
+        temp_str_2 = ""
+        for i in range(target_number):
+            temp_str_1 += str(geomean_t[i][0]) + ","
+            temp_str_2 += str(geomean_t[i][1]) + ","
+        filelist.append(temp_str_1 + temp_str_2[:-1] + "\n")
+    else:
+        filelist.append("Geomean," + str(geomean_t[0][0]) + ",," + str(geomean_t[0][1])
+            + ",," + str(geomean_t[0][2]) + ",," + str(geomean_t[0][3]) + ",," + str(geomean_t[0][4]) + "\n")
     print_file(filelist)
     return list_of_compare
 
@@ -294,6 +336,15 @@ def perf(options1, args):
     if is_windows:
         pwd1 = "..\\..\\"
 
+    if options.perf_target != "":
+        test_only_r = " sse2-i32x4 sse2-i32x8 sse4-i32x4 sse4-i32x8 sse4-i16x8 \
+                        sse4-i8x16 avx1-i32x4 avx1-i32x8 avx1-i32x16 avx1-i64x4 avx1.1-i32x8 \
+                        avx1.1-i32x16 avx1.1-i64x4 avx2-i32x8 avx2-i32x16 avx2-i64x4 "
+        test_only = options.perf_target.split(",")
+        for iterator in test_only:
+            if not (" " + iterator + " " in test_only_r):
+                error("unknow option for target: " + iterator, 1)
+
     # check if cpu usage is low now
     cpu_percent = cpu_check()
     if cpu_percent > 20:
@@ -345,9 +396,14 @@ def perf(options1, args):
     if options.ref != "":
         options.ref = True
     if os.environ.get("ISPC_HOME") != None:
-        if os.path.exists(os.environ["ISPC_HOME"] + os.sep + ispc_test):
-            ispc_test_exists = True
-            ispc_test = os.environ["ISPC_HOME"] + os.sep + ispc_test
+        if is_windows == False:
+            if os.path.exists(os.environ["ISPC_HOME"] + os.sep + ispc_test):
+                ispc_test_exists = True
+                ispc_test = os.environ["ISPC_HOME"] + os.sep + ispc_test
+        else:
+            if os.path.exists(os.environ["ISPC_HOME"] + "\\Release\\" + ispc_test):
+                ispc_test_exists = True
+                ispc_test = os.environ["ISPC_HOME"] + "\\Release\\" + ispc_test
     for counter in PATH_dir:
         if ispc_test_exists == False:
             if os.path.exists(counter + os.sep + ispc_test):
@@ -383,6 +439,10 @@ def perf(options1, args):
     # end of preparations
  
     print_debug("Okey go go go!\n\n", s, perf_log)
+    # report command line
+    if __name__ == "__main__":
+        print_debug("Command line: %s\n" % " ".join(map(str, sys.argv)), s, perf_log)
+    # report used ispc
     print_debug("Testing ispc: " + ispc_test + "\n", s, perf_log)
  
     #print compilers versions   
@@ -397,8 +457,6 @@ def perf(options1, args):
     while i < length-2:
         # we read name of test
         print_debug("%s" % lines[i], s, perf_log)
-        test = [lines[i][:-1],[],[],[],[],[]]
-        test_ref = [lines[i][:-1],[],[],[],[],[]]
         # read location of test
         folder = lines[i+1]
         folder = folder[:-1]
@@ -411,38 +469,55 @@ def perf(options1, args):
         # read parameters of test
         command = lines[i+2]
         command = command[:-1]
-        if is_windows == False:
-            ex_command_ref = "./ref " + command + " >> " + perf_temp + "_ref"
-            ex_command = "./test " + command + " >> " + perf_temp + "_test"
-            bu_command_ref = "make CXX="+ref_compiler+" CC="+refc_compiler+ " EXAMPLE=ref ISPC="+ispc_ref+" >> "+build_log+" 2>> "+build_log
-            bu_command = "make CXX="+ref_compiler+" CC="+refc_compiler+ " EXAMPLE=test ISPC="+ispc_test+" >> "+build_log+" 2>> "+build_log
-            re_command = "make clean >> "+build_log
-        else:
-            ex_command_ref = "x64\\Release\\ref.exe " + command + " >> " + perf_temp + "_ref"
-            ex_command = "x64\\Release\\test.exe " + command + " >> " + perf_temp + "_test"
-            bu_command_ref = "msbuild /V:m /p:Platform=x64 /p:Configuration=Release /p:TargetDir=.\ /p:TargetName=ref /t:rebuild >> " + build_log
-            bu_command = "msbuild /V:m /p:Platform=x64 /p:Configuration=Release /p:TargetDir=.\ /p:TargetName=test /t:rebuild >> " + build_log
-            re_command = "msbuild /t:clean >> " + build_log
-        commands = [ex_command, bu_command, ex_command_ref, bu_command_ref, re_command]
-        # parsing config parameters
-        next_line = lines[i+3]
-        if next_line[0] == "!": # we should take only one part of test output
-            R = next_line.split(' ')
-            c1 = int(R[1]) #c1 is a number of string which we want to use in test output
-            c2 = int(R[2]) #c2 is total number of strings in test output
-            i = i+1
-        else:
-            c1 = 1
-            c2 = 1
-        next_line = lines[i+3]
-        if next_line[0] == "^":  #we should concatenate result of this test with previous one
-            run_test(commands, c1, c2, answer[len(answer)-1], answer_ref[len(answer)-1], False)
-            i = i+1
-        else: #we run this test and append it's result to answer structure
-            run_test(commands, c1, c2, test, test_ref, True)
-            answer.append(test)
-            answer_ref.append(test_ref)
-
+        # handle conditional target argument
+        target_str_temp = ""
+	target_out_temp = ""
+        perf_targets = [""]
+        target_number = 1
+        if options.perf_target != "":
+            perf_targets = options.perf_target.split(',')
+            target_str_temp = " ISPC_IA_TARGETS="
+	    target_out_temp = " /p:Target_str="
+            target_number = len(perf_targets)
+        temp = 0
+        for target_i in range(target_number):
+            test = [lines[i][:-1],[],[],[],[],[]]
+            test_ref = [lines[i][:-1],[],[],[],[],[]]
+            target_str = target_str_temp + perf_targets[target_i]
+	    Target_out = target_out_temp + perf_targets[target_i]
+            if is_windows == False:
+                ex_command_ref = "./ref " + command + " >> " + perf_temp + "_ref"
+                ex_command = "./test " + command + " >> " + perf_temp + "_test"
+                bu_command_ref = "make CXX="+ref_compiler+" CC="+refc_compiler+ " EXAMPLE=ref ISPC="+ispc_ref+target_str+" >> "+build_log+" 2>> "+build_log
+                bu_command = "make CXX="+ref_compiler+" CC="+refc_compiler+ " EXAMPLE=test ISPC="+ispc_test+target_str+" >> "+build_log+" 2>> "+build_log
+                re_command = "make clean >> "+build_log
+            else:
+                ex_command_ref = "x64\\Release\\ref.exe " + command + " >> " + perf_temp + "_ref"
+                ex_command = "x64\\Release1\\test.exe " + command + " >> " + perf_temp + "_test"
+		bu_command_ref = "msbuild /V:m /p:Platform=x64 /p:Configuration=Release /p:TargetDir=.\ /p:TargetName=ref /p:ISPC_compiler=ispc_ref " + Target_out + " /t:rebuild >> " + build_log
+                bu_command = "msbuild /V:m /p:Platform=x64 /p:Configuration=Release /p:TargetDir=.\ /p:TargetName=test /p:ISPC_compiler=ispc " + Target_out + " /t:rebuild >> " + build_log
+                re_command = "msbuild /t:clean >> " + build_log
+            commands = [ex_command, bu_command, ex_command_ref, bu_command_ref, re_command]
+            # parsing config parameters
+            next_line = lines[i+3]
+            if next_line[0] == "!": # we should take only one part of test output
+                R = next_line.split(' ')
+                c1 = int(R[1]) #c1 is a number of string which we want to use in test output
+                c2 = int(R[2]) #c2 is total number of strings in test output
+                temp = 1
+            else:
+                c1 = 1
+                c2 = 1
+            next_line = lines[i+3]
+            if next_line[0] == "^":
+                temp = 1
+            if next_line[0] == "^" and target_number == 1:  #we should concatenate result of this test with previous one
+                run_test(commands, c1, c2, answer[len(answer)-1], answer_ref[len(answer)-1], False)
+            else: #we run this test and append it's result to answer structure
+                run_test(commands, c1, c2, test, test_ref, True)
+                answer.append(test)
+                answer_ref.append(test_ref)
+        i = i + temp
         # preparing next loop iteration
         os.chdir(pwd1)
         i+=4
@@ -452,11 +527,13 @@ def perf(options1, args):
     common.remove_if_exists(perf_temp+"_ref")
 
     #print collected answer
+    if target_number > 1:
+        s = True
     print_debug("\n\nTEST COMPILER:\n", s, perf_log)
-    A = print_answer(answer)
+    A = print_answer(answer, target_number)
     if options.ref != "":
         print_debug("\n\nREFERENCE COMPILER:\n", s, perf_log)
-        B = print_answer(answer_ref)
+        B = print_answer(answer_ref, target_number)
         # print perf report
         compare(A,B)
 
@@ -495,5 +572,7 @@ if __name__ == "__main__":
         help='set reference compiler for compare', default="")
     parser.add_option('-f', '--file', dest='in_file',
         help='file to save perf output', default="")
+    parser.add_option('-t', '--target', dest='perf_target',
+        help='set ispc target for building benchmarks (both test and ref)', default="")
     (options, args) = parser.parse_args()
     perf(options, args)
