@@ -86,7 +86,7 @@ endif
 ARCH_TYPE = $(shell arch)
 
 LLVM_CXXFLAGS=$(shell $(LLVM_CONFIG) --cppflags)
-LLVM_VERSION=LLVM_$(shell $(LLVM_CONFIG) --version | sed -e s/\\./_/ -e s/svn// -e s/\.0//)
+LLVM_VERSION=LLVM_$(shell $(LLVM_CONFIG) --version | sed -e 's/svn//' -e 's/\./_/' -e 's/\..*//')
 LLVM_VERSION_DEF=-D$(LLVM_VERSION)
 
 LLVM_COMPONENTS = engine ipo bitreader bitwriter instrumentation linker
@@ -113,7 +113,9 @@ ifeq ($(LLVM_VERSION),LLVM_3_4)
     ISPC_LIBS += -lcurses
 endif
 
-ifeq ($(LLVM_VERSION),LLVM_3_5)
+# There is no logical OR in GNU make. 
+# This 'ifneq' acts like if( !($(LLVM_VERSION) == LLVM_3_2 || $(LLVM_VERSION) == LLVM_3_3 || $(LLVM_VERSION) == LLVM_3_4))
+ifeq (,$(filter $(LLVM_VERSION), LLVM_3_2 LLVM_3_3 LLVM_3_4))
     ISPC_LIBS += -lcurses -lz
 endif
 
@@ -150,7 +152,9 @@ CXXFLAGS=$(OPT) $(LLVM_CXXFLAGS) -I. -Iobjs/ -I$(CLANG_INCLUDE)  \
 	-Wall \
 	-DBUILD_DATE="\"$(BUILD_DATE)\"" -DBUILD_VERSION="\"$(BUILD_VERSION)\"" \
 	-Wno-sign-compare -Wno-unused-function -Werror
-ifeq ($(LLVM_VERSION),LLVM_3_5)
+
+# if( !($(LLVM_VERSION) == LLVM_3_2 || $(LLVM_VERSION) == LLVM_3_3 || $(LLVM_VERSION) == LLVM_3_4))
+ifeq (,$(filter $(LLVM_VERSION), LLVM_3_2 LLVM_3_3 LLVM_3_4))
 	CXXFLAGS+=-std=c++11 -Wno-c99-extensions -Wno-deprecated-register
 endif
 ifneq ($(ARM_ENABLED), 0)
@@ -241,9 +245,9 @@ ispc: print_llvm_src dirs $(OBJS)
 clang: ispc
 clang: CXX=clang++
 
-# Use gcc as a default compiler, instead of gcc
+# Use gcc as a default compiler
 gcc: ispc
-gcc: CXX=clang++
+gcc: CXX=g++
 
 # Build ispc with address sanitizer instrumentation using clang compiler
 # Note that this is not portable build
