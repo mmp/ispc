@@ -554,7 +554,10 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic) :
         this->m_nativeVectorWidth = 16;
         this->m_nativeVectorAlignment = 64;
         this->m_vectorWidth = 16;
-        this->m_attributes = "+avx512f";
+        // TODO: what is the right set of attributes for KNL?
+        // More generally, how should we expose all of the various
+        // AVX-512 feature set variants?
+//CO        this->m_attributes = "+avx512f,+avx512dq,+avx512er,+avx512bw,+avx512cd,+avx512pf,+avx512vl";
         this->m_maskingIsFree = true;
         this->m_maskBitCount = 1;
         this->m_hasHalf = true;

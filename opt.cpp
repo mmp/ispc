@@ -1744,6 +1744,26 @@ lExtractOffsetVector248Scale(llvm::Value **vec) {
         else
             return LLVMInt32(1);
     }
+    else if (bop->getOpcode() == llvm::Instruction::Shl) {
+        // See if the indices are shifted left by 1, 2, or 3 places
+        // (corresponding to a multiply by 2, 4, and 8, respectively).
+        int splat;
+        if (lIsIntegerSplat(op1, &splat)) {
+            if (splat == 1) {
+                *vec = op0;
+                return LLVMInt32(2);
+            }
+            else if (splat == 2) {
+                *vec = op0;
+                return LLVMInt32(4);
+            }
+            else if (splat == 3) {
+                *vec = op0;
+                return LLVMInt32(8);
+            }
+        }
+        return LLVMInt32(1);
+    }
     else
         return LLVMInt32(1);
 }
