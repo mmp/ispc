@@ -547,7 +547,7 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic) :
         this->m_hasGather = true;
         cpuFromIsa = "core-avx2";
     }
-#if !defined (LLVM_3_1) && !defined(LLVM_3_2) && !defined(LLVM_3_3)
+#if !defined(LLVM_3_2) && !defined(LLVM_3_3)
     else if (!strcasecmp(isa, "avx512") ||
              !strcasecmp(isa, "avx512-i1x16")) {
         this->m_isa = Target::AVX512;
@@ -560,6 +560,10 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic) :
         this->m_hasHalf = true;
         this->m_hasRand = true;
         this->m_hasGather = this->m_hasScatter = true;
+        this->m_hasTranscendentals = false;
+        this->m_hasTrigonometry = false;
+        this->m_hasRsqrtd = this->m_hasRcpd = true;
+        cpuFromIsa = "knl";
     }
 #endif // LLVM 3.4+
 #ifdef ISPC_ARM_ENABLED
@@ -606,7 +610,6 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic) :
 
 #if defined(ISPC_ARM_ENABLED) && !defined(__arm__)
     if (cpu == NULL && !strncmp(isa, "neon", 4))
-
         cpu = "cortex-a9";
 #endif
 
@@ -765,8 +768,8 @@ Target::SupportedTargets() {
         "avx1-i32x8, avx1-i32x16, avx1-i64x4, "
         "avx1.1-i32x8, avx1.1-i32x16, avx1.1-i64x4 "
         "avx2-i32x8, avx2-i32x16, avx2-i64x4, "
-#if !defined (LLVM_3_1) && !defined(LLVM_3_2) && !defined(LLVM_3_3)
-        "avx512-i1x16"
+#if !defined(LLVM_3_2) && !defined(LLVM_3_3)
+        "avx512-i1x16, "
 #endif
         "generic-x1, generic-x4, generic-x8, generic-x16, "
         "generic-x32, generic-x64";

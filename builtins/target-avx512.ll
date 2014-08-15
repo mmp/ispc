@@ -29,6 +29,11 @@
 ;;   NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 ;;   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.  
 
+;; TODO
+;; - Use vector ctlz, cttz for varying versions of these in stdlib--currently,
+;;   these dispatch out to do one lane at a time.  There are LLVM intrinsics
+;;   for these now, so can we just use those for everything?
+
 define(`WIDTH',`16')
 define(`MASK',`i1')
 define(`HAVE_GATHER',`1')
@@ -48,10 +53,24 @@ aossoa()
 
 rdrand_definition()
 
+trigonometry_decl()
+transcendetals_decl()
+
+saturation_arithmetic_vec16()
+
+;; svml
+include(`svml.m4')
+svml_declare(float,f16,16)
+svml_define(float,f16,16,f)
+svml_declare(double,8,8)
+svml_define_x(double,8,8,d,16)
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; rcp
 
 declare float @__rcp_uniform_float(float) nounwind readonly alwaysinline
+
+declare  double @__rcp_uniform_double(double)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; rounding floats
@@ -71,15 +90,17 @@ declare double @__ceil_uniform_double(double) nounwind readonly alwaysinline
 ;; rsqrt
 
 declare float @__rsqrt_uniform_float(float) nounwind readonly alwaysinline
+declare double @__rsqrt_uniform_double(double) nounwind readonly alwaysinline
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; sqrt
 
-;; TODO: two params???
-declare <4 x float> @llvm.x86.avx512.sqrt.ss(<4 x float>, <4 x float>) nounwind readnone
+declare float @sqrtf(float) readnone
 
-declare float @__sqrt_uniform_float(float) nounwind readonly alwaysinline
-
+define float @__sqrt_uniform_float(float) nounwind readonly alwaysinline {
+  %v = call float @sqrtf(float %0)
+  ret float %v
+}
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; fastmath
@@ -157,6 +178,8 @@ define_avgs()
 
 declare <16 x float> @__rcp_varying_float(<16 x float>) nounwind readonly alwaysinline
 
+declare <16 x double> @__rcp_varying_double(<16 x double>) nounwind readonly alwaysinline
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; rounding floats
 
@@ -175,14 +198,15 @@ declare <16 x double> @__ceil_varying_double(<16 x double>) nounwind readonly al
 ;; rsqrt
 
 declare <16 x float> @__rsqrt_varying_float(<16 x float> %v) nounwind readonly alwaysinline
+declare <16 x double> @__rsqrt_varying_double(<16 x double> %v) nounwind readonly alwaysinline
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; sqrt
 
-declare <16 x float> @llvm.x86.avx512.sqrt.ps.512(<16 x float>) nounwind readnone
+declare <16 x float> @llvm.sqrt.v16f32(<16 x float>)
 
 define <16 x float> @__sqrt_varying_float(<16 x float>) nounwind readonly alwaysinline {
-  %r = call <16 x float> @llvm.x86.avx512.sqrt.ps.512(<16 x float> %0)
+  %r = call <16 x float> @llvm.sqrt.v16f32(<16 x float> %0)
   ret <16 x float> %r
 }
 
@@ -337,24 +361,47 @@ masked_load_float_double()
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; masked store
 
-declare void @__masked_store_i8(<16 x i8>* nocapture, <16 x i8>, 
-                                <16 x MASK>) nounwind alwaysinline
-declare void @__masked_store_i16(<16 x i16>* nocapture, <16 x i16>,
+declare void @__masked_store_i8(<16 x i8>* nocapture %ptr, <16 x i8> %val, 
+                                <16 x MASK> %mask) nounwind alwaysinline
+declare void @__masked_store_i16(<16 x i16>* nocapture %ptr, <16 x i16> %val,
                                  <16 x MASK> %mask) nounwind alwaysinline
-declare void @__masked_store_i32(<16 x i32>* nocapture, <16 x i32>, 
-                                 <16 x MASK>) nounwind alwaysinline
-declare void @__masked_store_i64(<16 x i64>* nocapture, <16 x i64>,
+declare void @__masked_store_i32(<16 x i32>* nocapture %ptr, <16 x i32> %val, 
+                                 <16 x MASK> %mask) nounwind alwaysinline
+declare void @__masked_store_i64(<16 x i64>* nocapture %ptr, <16 x i64> %val,
                                  <16 x MASK> %mask) nounwind alwaysinline
 
 
-declare void @__masked_store_blend_i8(<16 x i8>* nocapture, <16 x i8>, 
-                                      <16 x MASK>) nounwind alwaysinline
-declare void @__masked_store_blend_i16(<16 x i16>* nocapture %ptr, <16 x i16> %new, 
-                                       <16 x MASK> %mask) nounwind alwaysinline
-declare void @__masked_store_blend_i32(<16 x i32>* nocapture, <16 x i32>, 
-                                       <16 x MASK>) nounwind alwaysinline
-declare void @__masked_store_blend_i64(<16 x i64>* nocapture %ptr, <16 x i64> %new, 
-                                       <16 x MASK> %mask) nounwind alwaysinline
+define void @__masked_store_blend_i8(<16 x i8>* nocapture %ptr, <16 x i8> %new, 
+                                     <16 x MASK> %mask) nounwind alwaysinline {
+  %old = load <16 x i8>* %ptr
+  %sel = select <16 x i1> %mask, <16 x i8> %new, <16 x i8> %old
+  store <16 x i8> %sel, <16 x i8>* %ptr
+  ret void
+}
+
+define void @__masked_store_blend_i16(<16 x i16>* nocapture %ptr, <16 x i16> %new, 
+                                 <16 x MASK> %mask) nounwind alwaysinline {
+  %old = load <16 x i16>* %ptr
+  %sel = select <16 x i1> %mask, <16 x i16> %new, <16 x i16> %old
+  store <16 x i16> %sel, <16 x i16>* %ptr
+  ret void
+}
+
+define void @__masked_store_blend_i32(<16 x i32>* nocapture %ptr, <16 x i32> %new, 
+                                      <16 x MASK> %mask) nounwind alwaysinline {
+  %old = load <16 x i32>* %ptr
+  %sel = select <16 x i1> %mask, <16 x i32> %new, <16 x i32> %old
+  store <16 x i32> %sel, <16 x i32>* %ptr
+  ret void
+}
+
+define void @__masked_store_blend_i64(<16 x i64>* nocapture %ptr, <16 x i64> %new, 
+                                      <16 x MASK> %mask) nounwind alwaysinline {
+  %old = load <16 x i64>* %ptr
+  %sel = select <16 x i1> %mask, <16 x i64> %new, <16 x i64> %old
+  store <16 x i64> %sel, <16 x i64>* %ptr
+  ret void
+}
 
 masked_store_float_double()
 
@@ -382,10 +429,10 @@ scatter_avx512_tmp(double)
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; double precision sqrt
 
-declare <8 x double> @llvm.x86.avx512.sqrt.pd.512(<8 x double>) nounwind readnone
+declare <8 x double> @llvm.sqrt.v8f64(<8 x double>)
 
 define <16 x double> @__sqrt_varying_double(<16 x double>) nounwind alwaysinline {
-  unary8to16(r, double, @llvm.x86.avx512.sqrt.pd.512, %0)
+  unary8to16(r, double, @llvm.sqrt.v8f64, %0)
   ret <16 x double> %r
 }
 
