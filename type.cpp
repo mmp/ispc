@@ -3055,7 +3055,8 @@ FunctionType::LLVMFunctionType(llvm::LLVMContext *ctx, bool removeMask) const {
 
     // And add the function mask, if asked for
     if (!(removeMask || isUnmasked))
-        llvmArgTypes.push_back(LLVMTypes::MaskType);
+//CO        llvmArgTypes.push_back(LLVMTypes::MaskType);
+        llvmArgTypes.push_back(LLVMTypes::Int16Type);
 
     std::vector<llvm::Type *> callTypes;
     if (isTask) {

@@ -269,7 +269,8 @@ Function::emitCode(FunctionEmitContext *ctx, llvm::Function *function,
             llvm::Value *ptr = ctx->AddElementOffset(structParamPtr, nArgs, NULL,
                                                      "task_struct_mask");
             llvm::Value *ptrval = ctx->LoadInst(ptr, "mask");
-            ctx->SetFunctionMask(ptrval);
+            llvm::Value *maski1 = ctx->BitCastInst(ptrval, LLVMTypes::MaskType);
+            ctx->SetFunctionMask(maski1);
         }
 
         // Copy threadIndex and threadCount into stack-allocated storage so
@@ -334,8 +335,10 @@ Function::emitCode(FunctionEmitContext *ctx, llvm::Function *function,
 
             // Otherwise use the mask to set the entry mask value
             argIter->setName("__mask");
-            Assert(argIter->getType() == LLVMTypes::MaskType);
-            ctx->SetFunctionMask(argIter);
+            Assert(argIter->getType() == LLVMTypes::Int16Type);
+            llvm::Value *maski1 = ctx->BitCastInst(argIter, LLVMTypes::MaskType,
+                                                   "maski1");
+            ctx->SetFunctionMask(maski1);
             Assert(++argIter == function->arg_end());
         }
     }

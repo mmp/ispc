@@ -3326,8 +3326,12 @@ FunctionEmitContext::CallInst(llvm::Value *func, const FunctionType *funcType,
     unsigned int calleeArgCount = lCalleeArgCount(func, funcType);
     AssertPos(currentPos, argVals.size() + 1 == calleeArgCount ||
            argVals.size() == calleeArgCount);
-    if (argVals.size() + 1 == calleeArgCount)
-        argVals.push_back(GetFullMask());
+    if (argVals.size() + 1 == calleeArgCount) {
+//CO        argVals.push_back(GetFullMask());
+      llvm::Value *mask = GetFullMask();
+      llvm::Value *mask16 = BitCastInst(mask, LLVMTypes::Int16Type, "mask16");
+      argVals.push_back(mask16);
+    }
 
     if (llvm::isa<llvm::VectorType>(func->getType()) == false) {
         // Regular 'uniform' function call--just one function or function
@@ -3575,9 +3579,10 @@ FunctionEmitContext::LaunchInst(llvm::Value *callee,
     if (argStructType->getNumElements() == argVals.size() + 1) {
         // copy in the mask
         llvm::Value *mask = GetFullMask();
+        llvm::Value *mask16 = BitCastInst(mask, LLVMTypes::Int16Type, "mask16");
         llvm::Value *ptr = AddElementOffset(argmem, argVals.size(), NULL,
                                             "funarg_mask");
-        StoreInst(mask, ptr);
+        StoreInst(mask16, ptr);
     }
 
     // And emit the call to the user-supplied task launch function, passing
