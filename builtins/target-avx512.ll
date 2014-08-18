@@ -36,17 +36,31 @@
 ;; - Use vector ctlz, cttz for varying versions of these in stdlib--currently,
 ;;   these dispatch out to do one lane at a time.  There are LLVM intrinsics
 ;;   for these now, so can we just use those for everything?
-;; - proper packed store active... vexpandps, vcompresspd (need LLVM support)
 ;; - Transcendentals: vexp2
 ;; - vfixupimmps ?
 ;; - vpconflict for atomics?
-;; - round/ceil/floor uniform float (waiting on http://llvm.org/bugs/show_bug.cgi?id=20684)
-;; - 64-bit masked load bug: http://llvm.org/bugs/show_bug.cgi?id=20677
-;; - Can't pass <16 x i1> to function bug: http://llvm.org/bugs/show_bug.cgi?id=20665
 ;; - AVX1/2 and SSE return 12 bits of precision from single precision rcp and rsqrt,
 ;;   but AVX512 gives 14. Consequently, we don't currently do a Newton-Raphson
 ;;   step to improve the results.  Should we?
 ;; - rcp14 vs rcp28, ditto for rsqrt
+;; - atomic_add_local
+;; - ryg: foreach_active_find_next: use x & (x-1) to clear lowest bit
+
+;; LLVM bugs:
+;; - round/ceil/floor uniform float (waiting on http://llvm.org/bugs/show_bug.cgi?id=20684)
+;; - 64-bit masked load bug: http://llvm.org/bugs/show_bug.cgi?id=20677
+;; - Can't pass <16 x i1> to function bug: http://llvm.org/bugs/show_bug.cgi?id=20665
+
+;; LLVM bugs to file:
+;; - proper packed store active... vexpandps, vcompresspd (need LLVM support)
+;; - ryg: fma always uses 231 form; could save some movs if others used in
+;;   some cases (https://gist.github.com/rygorous/22180ced9c7a00bd68dd)
+;; - ryg: many kands can be folded back into passing mask to the earlier compare
+;; - ryg: lots of spills and then refills of things that were just
+;;   broadcasts of constant scalars
+;; - ryg: for e.g. if/else, back-propagate masks through intermediate
+;;   computations, can skip merge at end
+
 
 define(`WIDTH',`16')
 define(`MASK',`i1')
