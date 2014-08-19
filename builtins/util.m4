@@ -1537,24 +1537,44 @@ define $2 @__atomic_compare_exchange_uniform_$3_global($2* %ptr, $2 %cmp,
 define(`ctlztz', `
 declare_count_zeros()
 
-define i32 @__count_trailing_zeros_i32(i32) nounwind readnone alwaysinline {
+define i32 @__count_trailing_zeros_uniform_i32(i32) nounwind readnone alwaysinline {
   %c = call i32 @llvm.cttz.i32(i32 %0)
   ret i32 %c
 }
 
-define i64 @__count_trailing_zeros_i64(i64) nounwind readnone alwaysinline {
+define i64 @__count_trailing_zeros_uniform_i64(i64) nounwind readnone alwaysinline {
   %c = call i64 @llvm.cttz.i64(i64 %0)
   ret i64 %c
 }
 
-define i32 @__count_leading_zeros_i32(i32) nounwind readnone alwaysinline {
+define i32 @__count_leading_zeros_uniform_i32(i32) nounwind readnone alwaysinline {
   %c = call i32 @llvm.ctlz.i32(i32 %0)
   ret i32 %c
 }
 
-define i64 @__count_leading_zeros_i64(i64) nounwind readnone alwaysinline {
+define i64 @__count_leading_zeros_uniform_i64(i64) nounwind readnone alwaysinline {
   %c = call i64 @llvm.ctlz.i64(i64 %0)
   ret i64 %c
+}
+
+define <WIDTH x i32> @__count_trailing_zeros_varying_i32(<WIDTH x i32>) nounwind readnone alwaysinline {
+  %c = call <WIDTH x i32> @llvm.cttz.v`'WIDTH`'i32(<WIDTH x i32> %0)
+  ret <WIDTH x i32> %c
+}
+
+define <WIDTH x i64> @__count_trailing_zeros_varying_i64(<WIDTH x i64>) nounwind readnone alwaysinline {
+  %c = call <WIDTH x i64> @llvm.cttz.v`'WIDTH`'i64(<WIDTH x i64> %0)
+  ret <WIDTH x i64> %c
+}
+
+define <WIDTH x i32> @__count_leading_zeros_varying_i32(<WIDTH x i32>) nounwind readnone alwaysinline {
+  %c = call <WIDTH x i32> @llvm.ctlz.v`'WIDTH`'i32(<WIDTH x i32> %0)
+  ret <WIDTH x i32> %c
+}
+
+define <WIDTH x i64> @__count_leading_zeros_varying_i64(<WIDTH x i64>) nounwind readnone alwaysinline {
+  %c = call <WIDTH x i64> @llvm.ctlz.v`'WIDTH`'i64(<WIDTH x i64> %0)
+  ret <WIDTH x i64> %c
 }
 ')
 
@@ -4194,6 +4214,10 @@ declare i32 @llvm.ctlz.i32(i32)
 declare i64 @llvm.ctlz.i64(i64)
 declare i32 @llvm.cttz.i32(i32)
 declare i64 @llvm.cttz.i64(i64)
+declare <WIDTH x i32> @llvm.ctlz.v`'WIDTH`'i32(<WIDTH x i32>)
+declare <WIDTH x i64> @llvm.ctlz.v`'WIDTH`'i64(<WIDTH x i64>)
+declare <WIDTH x i32> @llvm.cttz.v`'WIDTH`'i32(<WIDTH x i32>)
+declare <WIDTH x i64> @llvm.cttz.v`'WIDTH`'i64(<WIDTH x i64>)
 
 define(`count_zeros_are_defined', true)
 ')

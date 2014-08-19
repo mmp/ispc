@@ -30,12 +30,10 @@
 ;;   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.  
 
 ;; TODO:
+;; - check ctlz/cttz with old targets
 ;; - round/ceil/floor uniform/varying double
 ;; - reduce_add/min/max_float, reduce_add_int8, reduce_add_double
 ;; - maked_store_i8/16
-;; - Use vector ctlz, cttz for varying versions of these in stdlib--currently,
-;;   these dispatch out to do one lane at a time.  There are LLVM intrinsics
-;;   for these now, so can we just use those for everything?
 ;; - Transcendentals: vexp2
 ;; - vfixupimmps ?
 ;; - vpconflict for atomics?
