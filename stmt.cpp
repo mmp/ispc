@@ -2182,7 +2182,7 @@ ForeachUniqueStmt::EmitCode(FunctionEmitContext *ctx) const {
 
         // Find the index of the first set bit in the mask
         llvm::Function *ctlzFunc =
-            m->module->getFunction("__count_trailing_zeros_i64");
+            m->module->getFunction("__count_trailing_zeros_uniform_i64");
         Assert(ctlzFunc != NULL);
         llvm::Value *firstSet = ctx->CallInst(ctlzFunc, NULL, remainingBits,
                                               "first_set");

@@ -29,28 +29,36 @@
 ;;   NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 ;;   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.  
 
+;; build:
+;; env PATH=$PATH:/Users/mpharr/llvm-dev/bin LLVM_HOME=/Users/mpharr/llvm-dev make -j8 clang
+;; where no clang* in llvm-dev/bin/...
+;;
+;; env PATH=/Users/mpharr/llvm-dev/bin:$PATH bugpoint --compile-custom -compile-command ./bugpoint.sh bug.ll
+
 ;; TODO:
-;; - check ctlz/cttz with old targets
+;; - atomic_add_local
+;; - ryg: foreach_active_find_next: use x & (x-1) to clear lowest bit
+;;        should get BLSR instruction....
 ;; - round/ceil/floor uniform/varying double
 ;; - reduce_add/min/max_float, reduce_add_int8, reduce_add_double
 ;; - maked_store_i8/16
-;; - Transcendentals: vexp2
-;; - vfixupimmps ?
+;; - Transcendentals: vexp2 (vfixupimmps ?)
+;;
 ;; - vpconflict for atomics?
 ;; - AVX1/2 and SSE return 12 bits of precision from single precision rcp and rsqrt,
 ;;   but AVX512 gives 14. Consequently, we don't currently do a Newton-Raphson
 ;;   step to improve the results.  Should we?
 ;; - rcp14 vs rcp28, ditto for rsqrt
-;; - atomic_add_local
-;; - ryg: foreach_active_find_next: use x & (x-1) to clear lowest bit
 
 ;; LLVM bugs:
 ;; - round/ceil/floor uniform float (waiting on http://llvm.org/bugs/show_bug.cgi?id=20684)
 ;; - 64-bit masked load bug: http://llvm.org/bugs/show_bug.cgi?id=20677
 ;; - Can't pass <16 x i1> to function bug: http://llvm.org/bugs/show_bug.cgi?id=20665
+;; - ktest: http://llvm.org/bugs/show_bug.cgi?id=20703
+;; - proper packed store active... vexpandps, vcompresspd
+;;   http://llvm.org/bugs/show_bug.cgi?id=20704
 
 ;; LLVM bugs to file:
-;; - proper packed store active... vexpandps, vcompresspd (need LLVM support)
 ;; - ryg: fma always uses 231 form; could save some movs if others used in
 ;;   some cases (https://gist.github.com/rygorous/22180ced9c7a00bd68dd)
 ;; - ryg: many kands can be folded back into passing mask to the earlier compare
