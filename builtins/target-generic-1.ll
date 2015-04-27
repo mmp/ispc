@@ -1,4 +1,4 @@
-;;  Copyright (c) 2012-2013, Intel Corporation
+;;  Copyright (c) 2012-2015, Intel Corporation
 ;;  All rights reserved.
 ;;
 ;;  Redistribution and use in source and binary forms, with or without
@@ -42,6 +42,7 @@ packed_load_and_store()
 scans()
 int64minmax()
 aossoa()
+declare_nvptx()
 saturation_arithmetic_novec()
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -193,7 +194,7 @@ define  <1 x float> @__vselect_float(<1 x float>, <1 x float>,
 
 define void @__masked_store_blend_i8(<1 x i8>* nocapture, <1 x i8>,
                                      <1 x i32> %mask) nounwind alwaysinline {
-  %val = load <1 x i8> * %0, align 4
+  %val = load PTR_OP_ARGS(`<1 x i8> ')  %0, align 4
   %newval = call <1 x i8> @__vselect_i8(<1 x i8> %val, <1 x i8> %1, <1 x i32> %mask) 
   store <1 x i8> %newval, <1 x i8> * %0, align 4
   ret void
@@ -201,7 +202,7 @@ define void @__masked_store_blend_i8(<1 x i8>* nocapture, <1 x i8>,
 
 define void @__masked_store_blend_i16(<1 x i16>* nocapture, <1 x i16>, 
                                       <1 x i32> %mask) nounwind alwaysinline {
-  %val = load <1 x i16> * %0, align 4
+  %val = load PTR_OP_ARGS(`<1 x i16> ')  %0, align 4
   %newval = call <1 x i16> @__vselect_i16(<1 x i16> %val, <1 x i16> %1, <1 x i32> %mask) 
   store <1 x i16> %newval, <1 x i16> * %0, align 4
   ret void
@@ -209,7 +210,7 @@ define void @__masked_store_blend_i16(<1 x i16>* nocapture, <1 x i16>,
 
 define void @__masked_store_blend_i32(<1 x i32>* nocapture, <1 x i32>, 
                                      <1 x i32> %mask) nounwind alwaysinline {
-  %val = load <1 x i32> * %0, align 4
+  %val = load PTR_OP_ARGS(`<1 x i32> ')  %0, align 4
   %newval = call <1 x i32> @__vselect_i32(<1 x i32> %val, <1 x i32> %1, <1 x i32> %mask) 
   store <1 x i32> %newval, <1 x i32> * %0, align 4
   ret void
@@ -217,7 +218,7 @@ define void @__masked_store_blend_i32(<1 x i32>* nocapture, <1 x i32>,
 
 define void @__masked_store_blend_i64(<1 x i64>* nocapture, <1 x i64>,
                                       <1 x i32> %mask) nounwind alwaysinline {
-  %val = load <1 x i64> * %0, align 4
+  %val = load PTR_OP_ARGS(`<1 x i64> ')  %0, align 4
   %newval = call <1 x i64> @__vselect_i64(<1 x i64> %val, <1 x i64> %1, <1 x i32> %mask) 
   store <1 x i64> %newval, <1 x i64> * %0, align 4
   ret void

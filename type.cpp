@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2010-2014, Intel Corporation
+  Copyright (c) 2010-2015, Intel Corporation
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -77,10 +77,13 @@ lShouldPrintName(const std::string &name) {
 }
 
 
-/** Utility routine to create a llvm DIArray type of the given number of
+/** Utility routine to create a llvm array type of the given number of
     the given element type. */
-static llvm::DIType
-lCreateDIArray(llvm::DIType eltType, int count) {
+#if defined (LLVM_3_2) || defined (LLVM_3_3) || defined (LLVM_3_4) || defined (LLVM_3_5) || defined (LLVM_3_6)
+static llvm::DIType lCreateDIArray(llvm::DIType eltType, int count) {
+#else // LLVM 3.7++
+static llvm::MDType *lCreateDIArray(llvm::MDType *eltType, int count) {
+#endif
 #ifdef LLVM_3_2
     int lowerBound = 0, upperBound = count-1;
 
@@ -91,15 +94,27 @@ lCreateDIArray(llvm::DIType eltType, int count) {
     }
 
     llvm::Value *sub = m->diBuilder->getOrCreateSubrange(lowerBound, upperBound);
-#else // LLVM 3.3+
+#elif defined (LLVM_3_3)|| defined (LLVM_3_4) || defined (LLVM_3_5)
     llvm::Value *sub = m->diBuilder->getOrCreateSubrange(0, count);
 #endif
-    std::vector<llvm::Value *> subs;
-    subs.push_back(sub);
-    llvm::DIArray subArray = m->diBuilder->getOrCreateArray(subs);
 
+#if defined (LLVM_3_2) || defined (LLVM_3_3) || defined (LLVM_3_4) || defined (LLVM_3_5)
+    std::vector<llvm::Value *> subs;
+#else // LLVM 3.6++
+    llvm::Metadata *sub = m->diBuilder->getOrCreateSubrange(0, count);
+    std::vector<llvm::Metadata *> subs;
+#endif
+    subs.push_back(sub);
+
+#if defined (LLVM_3_2) || defined (LLVM_3_3) || defined (LLVM_3_4) || defined (LLVM_3_5) || defined (LLVM_3_6)
+    llvm::DIArray subArray = m->diBuilder->getOrCreateArray(subs);
     uint64_t size = eltType.getSizeInBits() * count;
     uint64_t align = eltType.getAlignInBits();
+#else // LLVM 3.7++
+    llvm::DebugNodeArray subArray = m->diBuilder->getOrCreateArray(subs);
+    uint64_t size = eltType->getSizeInBits() * count;
+    uint64_t align = eltType->getAlignInBits();
+#endif
 
     return m->diBuilder->createArrayType(size, align, eltType, subArray);
 }
@@ -510,14 +525,21 @@ AtomicType::LLVMType(llvm::LLVMContext *ctx) const {
 }
 
 
-llvm::DIType
-AtomicType::GetDIType(llvm::DIDescriptor scope) const {
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
+llvm::DIType AtomicType::GetDIType(llvm::DIDescriptor scope) const {
+#else //LLVM 3.7++
+llvm::MDType *AtomicType::GetDIType(llvm::MDScope *scope) const {
+#endif
     Assert(variability.type != Variability::Unbound);
 
     if (variability.type == Variability::Uniform) {
         switch (basicType) {
         case TYPE_VOID:
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
             return llvm::DIType();
+#else //LLVM 3.7++
+            return NULL;
+#endif
         case TYPE_BOOL:
             return m->diBuilder->createBasicType("bool", 32 /* size */, 32 /* align */,
                                                  llvm::dwarf::DW_ATE_unsigned);
@@ -564,19 +586,32 @@ AtomicType::GetDIType(llvm::DIDescriptor scope) const {
             break;
         default:
             FATAL("unhandled basic type in AtomicType::GetDIType()");
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
             return llvm::DIType();
+#else //LLVM 3.7++
+            return NULL;
+#endif
         }
     }
     else if (variability == Variability::Varying) {
-        llvm::DIType unifType = GetAsUniformType()->GetDIType(scope);
 #ifdef LLVM_3_2
         llvm::Value *sub = m->diBuilder->getOrCreateSubrange(0, g->target->getVectorWidth()-1);
-#else // LLVM 3.3+
+#elif defined (LLVM_3_3)|| defined (LLVM_3_4) || defined (LLVM_3_5)
         llvm::Value *sub = m->diBuilder->getOrCreateSubrange(0, g->target->getVectorWidth());
+#else // LLVM 3.6++
+        llvm::Metadata *sub = m->diBuilder->getOrCreateSubrange(0, g->target->getVectorWidth());
 #endif
+#if defined (LLVM_3_3)|| defined (LLVM_3_4) || defined (LLVM_3_5) || defined (LLVM_3_6)
         llvm::DIArray subArray = m->diBuilder->getOrCreateArray(sub);
+        llvm::DIType unifType = GetAsUniformType()->GetDIType(scope);
         uint64_t size =  unifType.getSizeInBits()  * g->target->getVectorWidth();
         uint64_t align = unifType.getAlignInBits() * g->target->getVectorWidth();
+#else // LLVM 3.7++
+        llvm::DebugNodeArray subArray = m->diBuilder->getOrCreateArray(sub);
+        llvm::MDType *unifType = GetAsUniformType()->GetDIType(scope);
+        uint64_t size =  unifType->getSizeInBits() * g->target->getVectorWidth();
+        uint64_t align = unifType->getAlignInBits()* g->target->getVectorWidth();
+#endif
         return m->diBuilder->createVectorType(size, align, unifType, subArray);
     }
     else {
@@ -751,7 +786,8 @@ EnumType::Mangle() const {
     std::string ret;
     if (isConst) ret += "C";
     ret += variability.MangleString();
-    ret += std::string("enum[") + name + std::string("]");
+//    ret += std::string("enum[") + name + std::string("]");
+    ret += std::string("enum_5B_") + name + std::string("_5D_");
     return ret;
 }
 
@@ -808,44 +844,69 @@ EnumType::LLVMType(llvm::LLVMContext *ctx) const {
 }
 
 
-llvm::DIType
-EnumType::GetDIType(llvm::DIDescriptor scope) const {
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
+llvm::DIType EnumType::GetDIType(llvm::DIDescriptor scope) const {
+#else // LLVM 3.7++
+llvm::MDType *EnumType::GetDIType(llvm::MDScope *scope) const {
+#endif
+
+#if defined (LLVM_3_2) || defined (LLVM_3_3) || defined (LLVM_3_4) || defined (LLVM_3_5)
     std::vector<llvm::Value *> enumeratorDescriptors;
+#else // LLVM 3.6++
+    std::vector<llvm::Metadata *> enumeratorDescriptors;
+#endif
     for (unsigned int i = 0; i < enumerators.size(); ++i) {
         unsigned int enumeratorValue;
         Assert(enumerators[i]->constValue != NULL);
         int count = enumerators[i]->constValue->GetValues(&enumeratorValue);
         Assert(count == 1);
-
+#if defined (LLVM_3_2) || defined (LLVM_3_3) || defined (LLVM_3_4) || defined (LLVM_3_5)
         llvm::Value *descriptor =
+#else // LLVM 3.6++
+        llvm::Metadata *descriptor =
+#endif
             m->diBuilder->createEnumerator(enumerators[i]->name, enumeratorValue);
         enumeratorDescriptors.push_back(descriptor);
     }
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
     llvm::DIArray elementArray =
         m->diBuilder->getOrCreateArray(enumeratorDescriptors);
-
     llvm::DIFile diFile = pos.GetDIFile();
     llvm::DIType diType =
         m->diBuilder->createEnumerationType(diFile, name, diFile, pos.first_line,
                                             32 /* size in bits */,
                                             32 /* align in bits */,
-                                            elementArray
-                                            , llvm::DIType()
-                                            );
-
-
+                                            elementArray, llvm::DIType());
+#else // LLVM 3.7++
+    llvm::DebugNodeArray elementArray =
+        m->diBuilder->getOrCreateArray(enumeratorDescriptors);
+    llvm::MDFile *diFile = pos.GetDIFile();
+    llvm::MDType *diType =
+        m->diBuilder->createEnumerationType(diFile, name, diFile, pos.first_line,
+                                            32 /* size in bits */,
+                                            32 /* align in bits */,
+                                            elementArray, NULL);
+#endif
     switch (variability.type) {
     case Variability::Uniform:
         return diType;
     case Variability::Varying: {
 #ifdef LLVM_3_2
         llvm::Value *sub = m->diBuilder->getOrCreateSubrange(0, g->target->getVectorWidth()-1);
-#else // LLVM 3.3+
+#elif defined (LLVM_3_3)|| defined (LLVM_3_4) || defined (LLVM_3_5)        
         llvm::Value *sub = m->diBuilder->getOrCreateSubrange(0, g->target->getVectorWidth());
+#else // LLVM 3.6++
+        llvm::Metadata *sub = m->diBuilder->getOrCreateSubrange(0, g->target->getVectorWidth());
 #endif
+#if defined (LLVM_3_3)|| defined (LLVM_3_4) || defined (LLVM_3_5) || defined (LLVM_3_6)
         llvm::DIArray subArray = m->diBuilder->getOrCreateArray(sub);
         uint64_t size =  diType.getSizeInBits()  * g->target->getVectorWidth();
         uint64_t align = diType.getAlignInBits() * g->target->getVectorWidth();
+#else // LLVM 3.7++
+        llvm::DebugNodeArray subArray = m->diBuilder->getOrCreateArray(sub);
+        uint64_t size =  diType->getSizeInBits() * g->target->getVectorWidth();
+        uint64_t align = diType->getAlignInBits()* g->target->getVectorWidth();
+#endif
         return m->diBuilder->createVectorType(size, align, diType, subArray);
     }
     case Variability::SOA: {
@@ -853,7 +914,11 @@ EnumType::GetDIType(llvm::DIDescriptor scope) const {
     }
     default:
         FATAL("Unexpected variability in EnumType::GetDIType()");
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
         return llvm::DIType();
+#else //LLVM 3.7++
+        return NULL;
+#endif
     }
 }
 
@@ -1187,14 +1252,21 @@ PointerType::LLVMType(llvm::LLVMContext *ctx) const {
 }
 
 
-llvm::DIType
-PointerType::GetDIType(llvm::DIDescriptor scope) const {
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
+llvm::DIType PointerType::GetDIType(llvm::DIDescriptor scope) const {
     if (baseType == NULL) {
         Assert(m->errorCount > 0);
         return llvm::DIType();
     }
-
     llvm::DIType diTargetType = baseType->GetDIType(scope);
+#else //LLVM 3.7++
+llvm::MDType *PointerType::GetDIType(llvm::MDScope *scope) const {
+    if (baseType == NULL) {
+        Assert(m->errorCount > 0);
+        return NULL;
+    }
+    llvm::MDType *diTargetType = baseType->GetDIType(scope);
+#endif
     int bitsSize = g->target->is32Bit() ? 32 : 64;
     int ptrAlignBits = bitsSize;
     switch (variability.type) {
@@ -1203,8 +1275,12 @@ PointerType::GetDIType(llvm::DIDescriptor scope) const {
                                                ptrAlignBits);
     case Variability::Varying: {
         // emit them as an array of pointers
-        llvm::DIType eltType = m->diBuilder->createPointerType(diTargetType,
-                                                               bitsSize, ptrAlignBits);
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
+        llvm::DIType eltType =
+#else //LLVM 3.7++
+        llvm::MDDerivedType *eltType =
+#endif
+            m->diBuilder->createPointerType(diTargetType, bitsSize, ptrAlignBits);
         return lCreateDIArray(eltType, g->target->getVectorWidth());
     }
     case Variability::SOA: {
@@ -1213,7 +1289,11 @@ PointerType::GetDIType(llvm::DIDescriptor scope) const {
     }
     default:
         FATAL("Unexpected variability in PointerType::GetDIType()");
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
         return llvm::DIType();
+#else //LLVM 3.7++
+        return NULL;
+#endif
     }
 }
 
@@ -1431,7 +1511,8 @@ ArrayType::Mangle() const {
         sprintf(buf, "%d", numElements);
     else
         buf[0] = '\0';
-    return s + "[" + buf + "]";
+//    return s + "[" + buf + "]";
+    return s + "_5B_" + buf + "_5D_";
 }
 
 
@@ -1486,14 +1567,21 @@ ArrayType::TotalElementCount() const {
 }
 
 
-llvm::DIType
-ArrayType::GetDIType(llvm::DIDescriptor scope) const {
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
+llvm::DIType ArrayType::GetDIType(llvm::DIDescriptor scope) const {
     if (child == NULL) {
         Assert(m->errorCount > 0);
         return llvm::DIType();
     }
-
     llvm::DIType eltType = child->GetDIType(scope);
+#else //LLVM 3.7++
+llvm::MDType *ArrayType::GetDIType(llvm::MDScope *scope) const {
+    if (child == NULL) {
+        Assert(m->errorCount > 0);
+        return NULL;
+    }
+    llvm::MDType *eltType = child->GetDIType(scope);
+#endif
     return lCreateDIArray(eltType, numElements);
 }
 
@@ -1728,22 +1816,34 @@ VectorType::LLVMType(llvm::LLVMContext *ctx) const {
 }
 
 
-llvm::DIType
-VectorType::GetDIType(llvm::DIDescriptor scope) const {
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
+llvm::DIType VectorType::GetDIType(llvm::DIDescriptor scope) const {
     llvm::DIType eltType = base->GetDIType(scope);
+#else //LLVM 3.7++
+llvm::MDType *VectorType::GetDIType(llvm::MDScope *scope) const {
+    llvm::MDType *eltType = base->GetDIType(scope);
+#endif
 #ifdef LLVM_3_2
     llvm::Value *sub = m->diBuilder->getOrCreateSubrange(0, numElements-1);
-#else // LLVM 3.3+
+#elif defined (LLVM_3_3)|| defined (LLVM_3_4) || defined (LLVM_3_5)
     llvm::Value *sub = m->diBuilder->getOrCreateSubrange(0, numElements);
+#else // LLVM 3.6++
+    llvm::Metadata *sub = m->diBuilder->getOrCreateSubrange(0, numElements);
 #endif
-    llvm::DIArray subArray = m->diBuilder->getOrCreateArray(sub);
-
-    uint64_t sizeBits = eltType.getSizeInBits() * numElements;
 
     // vectors of varying types are already naturally aligned to the
     // machine's vector width, but arrays of uniform types need to be
     // explicitly aligned to the machines natural vector alignment.
+#if defined (LLVM_3_3)|| defined (LLVM_3_4) || defined (LLVM_3_5) || defined (LLVM_3_6)
+    llvm::DIArray subArray = m->diBuilder->getOrCreateArray(sub);
+    uint64_t sizeBits = eltType.getSizeInBits() * numElements;
     uint64_t align = eltType.getAlignInBits();
+#else // LLVM 3.7++
+    llvm::DebugNodeArray subArray = m->diBuilder->getOrCreateArray(sub);
+    uint64_t sizeBits = eltType->getSizeInBits() * numElements;
+    uint64_t align = eltType->getAlignInBits();
+#endif
+
     if (IsUniformType())
         align = 4 * g->target->getNativeVectorWidth();
 
@@ -1755,7 +1855,11 @@ VectorType::GetDIType(llvm::DIDescriptor scope) const {
     }
     else {
         FATAL("Unexpected variability in VectorType::GetDIType()");
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
         return llvm::DIType();
+#else // LLVM 3.7++
+        return NULL;
+#endif
     }
 }
 
@@ -2104,12 +2208,14 @@ lMangleStruct(Variability variability, bool isConst, const std::string &name) {
     Assert(variability != Variability::Unbound);
 
     std::string ret;
-    ret += "s[";
+//    ret += "s[";
+    ret += "s_5B_";
     if (isConst)
         ret += "_c_";
     ret += variability.MangleString();
 
-    ret += name + std::string("]");
+//    ret += name + std::string("]");
+    ret += name + std::string("_5D_");
     return ret;
 }
 
@@ -2153,18 +2259,30 @@ StructType::LLVMType(llvm::LLVMContext *ctx) const {
 }
 
 
-llvm::DIType
-StructType::GetDIType(llvm::DIDescriptor scope) const {
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
+llvm::DIType StructType::GetDIType(llvm::DIDescriptor scope) const {
+#else //LLVM 3.7++
+llvm::MDType *StructType::GetDIType(llvm::MDScope *scope) const {
+#endif
     uint64_t currentSize = 0, align = 0;
-
+#if defined (LLVM_3_2) || defined (LLVM_3_3) || defined (LLVM_3_4) || defined (LLVM_3_5)
     std::vector<llvm::Value *> elementLLVMTypes;
+#else // LLVM 3.6++
+    std::vector<llvm::Metadata *> elementLLVMTypes;
+#endif
     // Walk through the elements of the struct; for each one figure out its
     // alignment and size, using that to figure out its offset w.r.t. the
     // start of the structure.
     for (unsigned int i = 0; i < elementTypes.size(); ++i) {
+#if defined (LLVM_3_2) || defined (LLVM_3_3) || defined (LLVM_3_4) || defined (LLVM_3_5) || defined (LLVM_3_6)
         llvm::DIType eltType = GetElementType(i)->GetDIType(scope);
         uint64_t eltAlign = eltType.getAlignInBits();
         uint64_t eltSize = eltType.getSizeInBits();
+#else // LLVM 3.7++
+        llvm::MDType *eltType = GetElementType(i)->GetDIType(scope);
+        uint64_t eltAlign = eltType->getAlignInBits();
+        uint64_t eltSize = eltType->getSizeInBits();
+#endif
         Assert(eltAlign != 0);
 
         // The alignment for the entire structure is the maximum of the
@@ -2177,9 +2295,14 @@ StructType::GetDIType(llvm::DIDescriptor scope) const {
             currentSize += eltAlign - (currentSize % eltAlign);
         Assert((currentSize == 0) || (currentSize % eltAlign) == 0);
 
-        llvm::DIFile diFile = elementPositions[i].GetDIFile();
         int line = elementPositions[i].first_line;
+#if defined (LLVM_3_2) || defined (LLVM_3_3) || defined (LLVM_3_4) || defined (LLVM_3_5) || defined (LLVM_3_6)
+        llvm::DIFile diFile = elementPositions[i].GetDIFile();
         llvm::DIType fieldType =
+#else // LLVM 3.7++
+        llvm::MDFile *diFile = elementPositions[i].GetDIFile();
+        llvm::MDDerivedType *fieldType =
+#endif
             m->diBuilder->createMemberType(scope, elementNames[i], diFile,
                                            line, eltSize, eltAlign,
                                            currentSize, 0, eltType);
@@ -2193,8 +2316,13 @@ StructType::GetDIType(llvm::DIDescriptor scope) const {
     if (currentSize > 0 && (currentSize % align))
         currentSize += align - (currentSize % align);
 
+#if defined (LLVM_3_2) || defined (LLVM_3_3) || defined (LLVM_3_4) || defined (LLVM_3_5) || defined (LLVM_3_6)
     llvm::DIArray elements = m->diBuilder->getOrCreateArray(elementLLVMTypes);
     llvm::DIFile diFile = pos.GetDIFile();
+#else // LLVM 3.7++
+    llvm::DebugNodeArray elements = m->diBuilder->getOrCreateArray(elementLLVMTypes);
+    llvm::MDFile *diFile = pos.GetDIFile();
+#endif
     return m->diBuilder->createStructType(
         diFile,
         name,
@@ -2203,8 +2331,10 @@ StructType::GetDIType(llvm::DIDescriptor scope) const {
         currentSize,    // Size in bits
         align,          // Alignment in bits
         0,              // Flags
-#if !defined(LLVM_3_2)
+#if defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
         llvm::DIType(), // DerivedFrom
+#elif !defined(LLVM_3_2) // LLVM 3.7++
+        NULL,
 #endif
         elements);
 }
@@ -2434,10 +2564,15 @@ UndefinedStructType::LLVMType(llvm::LLVMContext *ctx) const {
 }
 
 
-llvm::DIType
-UndefinedStructType::GetDIType(llvm::DIDescriptor scope) const {
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
+llvm::DIType UndefinedStructType::GetDIType(llvm::DIDescriptor scope) const {
     llvm::DIFile diFile = pos.GetDIFile();
     llvm::DIArray elements;
+#else //LLVM 3.7++
+llvm::MDType *UndefinedStructType::GetDIType(llvm::MDScope *scope) const {
+    llvm::MDFile *diFile = pos.GetDIFile();
+    llvm::DebugNodeArray elements;
+#endif
     return m->diBuilder->createStructType(
         diFile,
         name,
@@ -2446,8 +2581,10 @@ UndefinedStructType::GetDIType(llvm::DIDescriptor scope) const {
         0,              // Size
         0,              // Align
         0,              // Flags
-#if !defined(LLVM_3_2)
+#if defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
         llvm::DIType(), // DerivedFrom
+#elif !defined(LLVM_3_2) // LLVM 3.7++
+        NULL,
 #endif
         elements);
 }
@@ -2701,14 +2838,21 @@ ReferenceType::LLVMType(llvm::LLVMContext *ctx) const {
 }
 
 
-llvm::DIType
-ReferenceType::GetDIType(llvm::DIDescriptor scope) const {
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
+llvm::DIType ReferenceType::GetDIType(llvm::DIDescriptor scope) const {
     if (targetType == NULL) {
         Assert(m->errorCount > 0);
         return llvm::DIType();
     }
-
     llvm::DIType diTargetType = targetType->GetDIType(scope);
+#else //LLVM 3.7++
+llvm::MDType *ReferenceType::GetDIType(llvm::MDScope *scope) const {
+    if (targetType == NULL) {
+        Assert(m->errorCount > 0);
+        return NULL;
+    }
+    llvm::MDType *diTargetType = targetType->GetDIType(scope);
+#endif
     return m->diBuilder->createReferenceType(llvm::dwarf::DW_TAG_reference_type,
                                              diTargetType);
 }
@@ -2973,34 +3117,49 @@ FunctionType::LLVMType(llvm::LLVMContext *ctx) const {
 }
 
 
-llvm::DIType
-FunctionType::GetDIType(llvm::DIDescriptor scope) const {
-    std::vector<llvm::Value *> retArgTypes;
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
+llvm::DIType FunctionType::GetDIType(llvm::DIDescriptor scope) const {
+#else //LLVM 3.7++
+llvm::MDType *FunctionType::GetDIType(llvm::MDScope *scope) const {
+#endif
 
+#if defined (LLVM_3_2) || defined (LLVM_3_3) || defined (LLVM_3_4) || defined (LLVM_3_5)
+    std::vector<llvm::Value *> retArgTypes;
+#else // LLVM 3.6++
+    std::vector<llvm::Metadata *> retArgTypes;
+#endif
     retArgTypes.push_back(returnType->GetDIType(scope));
     for (int i = 0; i < GetNumParameters(); ++i) {
         const Type *t = GetParameterType(i);
         if (t == NULL)
 
-#if !defined(LLVM_3_2) && !defined(LLVM_3_3)// LLVM 3.4+
-            return llvm::DICompositeType();
-#else
+#if defined(LLVM_3_2) || defined(LLVM_3_3)
             return llvm::DIType();
+#elif defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
+            return llvm::DICompositeType();
+#else // LLVM 3.7++
+            return NULL;
 #endif
         retArgTypes.push_back(t->GetDIType(scope));
     }
-
-#if !defined(LLVM_3_2) && !defined(LLVM_3_3) && !defined(LLVM_3_4) && !defined(LLVM_3_5) // LLVM 3.6+
-    llvm::DITypeArray retArgTypesArray =
-        m->diBuilder->getOrCreateTypeArray(llvm::ArrayRef<llvm::Value *>(retArgTypes));
-#else
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5)
     llvm::DIArray retArgTypesArray =
         m->diBuilder->getOrCreateArray(llvm::ArrayRef<llvm::Value *>(retArgTypes));
-#endif
-    
     llvm::DIType diType =
         // FIXME: DIFile
         m->diBuilder->createSubroutineType(llvm::DIFile(), retArgTypesArray);
+#elif defined(LLVM_3_6)
+    llvm::DITypeArray retArgTypesArray =
+        m->diBuilder->getOrCreateTypeArray(retArgTypes);
+    llvm::DIType diType =
+        // FIXME: DIFile
+        m->diBuilder->createSubroutineType(llvm::DIFile(), retArgTypesArray);
+#else // LLVM 3.7++
+    llvm::MDTypeRefArray retArgTypesArray =
+        m->diBuilder->getOrCreateTypeArray(retArgTypes);
+    llvm::MDType *diType =
+        m->diBuilder->createSubroutineType(NULL, retArgTypesArray);
+#endif
     return diType;
 }
 
@@ -3059,7 +3218,11 @@ FunctionType::LLVMFunctionType(llvm::LLVMContext *ctx, bool removeMask) const {
         llvmArgTypes.push_back(LLVMTypes::Int16Type);
 
     std::vector<llvm::Type *> callTypes;
-    if (isTask) {
+    if (isTask 
+#ifdef ISPC_NVPTX_ENABLED
+      && (g->target->getISA() != Target::NVPTX)
+#endif 
+      ){
         // Tasks take three arguments: a pointer to a struct that holds the
         // actual task arguments, the thread index, and the total number of
         // threads the tasks system has running.  (Task arguments are

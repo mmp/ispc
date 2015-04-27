@@ -180,44 +180,45 @@ define <16 x double> @__rcp_varying_double(<16 x double>) nounwind readonly alwa
 ;; rounding floats
 
 ;; args: value to round, (value again), rounding mode
-declare <4 x float> @llvm.x86.avx512.rndscale.ss(<4 x float>, <4 x float>, i32)
+;; FIXME declare <4 x float> @llvm.x86.avx512.rndscale.ss(<4 x float>, <4 x float>, i32)
 
 define float @__round_uniform_float(float) nounwind readonly alwaysinline {
-   %fv = bitcast float %0 to <1 x float>
-   %v = shufflevector <1 x float> %fv, <1 x float> undef,
-	  <4 x i32> <i32 0, i32 undef, i32 undef, i32 undef>
-   %rv = call <4 x float> @llvm.x86.avx512.rndscale.ss(<4 x float> %v,
-          <4 x float> %v, i32 0)
-   %r = extractelement <4 x float> %rv, i32 0
-   ret float %r
+;;   %fv = bitcast float %0 to <1 x float>
+;;   %v = shufflevector <1 x float> %fv, <1 x float> undef,
+;;	  <4 x i32> <i32 0, i32 undef, i32 undef, i32 undef>
+;;   %rv = call <4 x float> @llvm.x86.avx512.rndscale.ss(<4 x float> %v,
+;;          <4 x float> %v, i32 0)
+;;   %r = extractelement <4 x float> %rv, i32 0
+;;   ret float %r
+   ret float undef
 }
 
 declare float @__floor_uniform_float(float) nounwind readonly alwaysinline
 declare float @__ceil_uniform_float(float) nounwind readonly alwaysinline
 
 ;; args: value to round, rounding mode, (value again), mask, XX [4]
-declare <16 x float> @llvm.x86.avx512.mask.rndscale.ps.512(<16 x float>, i32,
-    <16 x float>, i16, i32)
+;; FIXME declare <16 x float> @llvm.x86.avx512.mask.rndscale.ps.512(<16 x float>, i32,
+;;    <16 x float>, i16, i32)
 
 define <16 x float> @__round_varying_float(<16 x float>) nounwind readonly alwaysinline {
   ; i32 0 -> round to nearest even, no scale, no precision check 
-  %r = call <16 x float> @llvm.x86.avx512.mask.rndscale.ps.512(<16 x float> %0, i32 0,
-    <16 x float> %0, i16 -1, i32 4)
-  ret <16 x float> %r
+;;  %r = call <16 x float> @llvm.x86.avx512.mask.rndscale.ps.512(<16 x float> %0, i32 0,
+;;    <16 x float> %0, i16 -1, i32 4)
+  ret <16 x float> undef
 }
 
 define <16 x float> @__floor_varying_float(<16 x float>) nounwind readonly alwaysinline {
   ; i32 1 -> round to equal or smaller, no scale, no precision check 
-  %r = call <16 x float> @llvm.x86.avx512.mask.rndscale.ps.512(<16 x float> %0, i32 1,
-    <16 x float> %0, i16 -1, i32 4)
-  ret <16 x float> %r
+;;  %r = call <16 x float> @llvm.x86.avx512.mask.rndscale.ps.512(<16 x float> %0, i32 1,
+;;    <16 x float> %0, i16 -1, i32 4)
+  ret <16 x float> undef
 }
 
 define <16 x float> @__ceil_varying_float(<16 x float>) nounwind readonly alwaysinline {
   ; i32 2 -> round to equal or larger, no scale, no precision check 
-  %r = call <16 x float> @llvm.x86.avx512.mask.rndscale.ps.512(<16 x float> %0, i32 2,
-    <16 x float> %0, i16 -1, i32 4)
-  ret <16 x float> %r
+;;  %r = call <16 x float> @llvm.x86.avx512.mask.rndscale.ps.512(<16 x float> %0, i32 2,
+;;    <16 x float> %0, i16 -1, i32 4)
+  ret <16 x float> undef
 }
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -350,7 +351,7 @@ define void @__fastmath() nounwind alwaysinline {
   %ptr = alloca i32
   %ptr8 = bitcast i32 * %ptr to i8 *
   call void @llvm.x86.sse.stmxcsr(i8 * %ptr8)
-  %oldval = load i32 *%ptr
+  %oldval = load i32, i32* %ptr
 
   ; turn on DAZ (64)/FTZ (32768) -> 32832
   %update = or i32 %oldval, 32832
@@ -631,7 +632,7 @@ define <16 x double> @__masked_load_double(i8 *, <16 x MASK> %mask) nounwind alw
   %maska_i8 = bitcast <8 x i1> %maska to i8
   %maskb_i8 = bitcast <8 x i1> %maskb to i8
   %ra = call <8 x double> @llvm.x86.avx512.mask.loadu.pd.512(i8* %0, <8 x double> zeroinitializer, i8 %maska_i8)
-  %ptrb = getelementptr i8 * %0, i64 512
+  %ptrb = getelementptr i8, i8 * %0, i64 512
   %rb = call <8 x double> @llvm.x86.avx512.mask.loadu.pd.512(i8* %ptrb, <8 x double> zeroinitializer, i8 %maskb_i8)
   %r16 = shufflevector <8 x double> %ra, <8 x double> %rb,
            <16 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7,
@@ -676,7 +677,7 @@ define void @__masked_store_i64(<16 x i64>* nocapture %ptr, <16 x i64> %val,
   split_mask(%mask, %m0, %m1)
   
   %p0 = bitcast <16 x i64> * %ptr to i8 *
-  %p1 = getelementptr i8 * %p0, i64 512
+  %p1 = getelementptr i8, i8 * %p0, i64 512
 
   %v0 = shufflevector <16 x i64> %val, <16 x i64> undef,
     <8 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7>
@@ -693,7 +694,7 @@ define void @__masked_store_i64(<16 x i64>* nocapture %ptr, <16 x i64> %val,
 
 define void @__masked_store_blend_i8(<16 x i8>* nocapture %ptr, <16 x i8> %new, 
                                      <16 x MASK> %mask) nounwind alwaysinline {
-  %old = load <16 x i8>* %ptr
+  %old = load <16 x i8>, <16 x i8> * %ptr
   %sel = select <16 x i1> %mask, <16 x i8> %new, <16 x i8> %old
   store <16 x i8> %sel, <16 x i8>* %ptr
   ret void
@@ -701,7 +702,7 @@ define void @__masked_store_blend_i8(<16 x i8>* nocapture %ptr, <16 x i8> %new,
 
 define void @__masked_store_blend_i16(<16 x i16>* nocapture %ptr, <16 x i16> %new, 
                                       <16 x MASK> %mask) nounwind alwaysinline {
-  %old = load <16 x i16>* %ptr
+  %old = load <16 x i16>, <16 x i16> * %ptr
   %sel = select <16 x i1> %mask, <16 x i16> %new, <16 x i16> %old
   store <16 x i16> %sel, <16 x i16>* %ptr
   ret void
@@ -709,7 +710,7 @@ define void @__masked_store_blend_i16(<16 x i16>* nocapture %ptr, <16 x i16> %ne
 
 define void @__masked_store_blend_i32(<16 x i32>* nocapture %ptr, <16 x i32> %new, 
                                       <16 x MASK> %mask) nounwind alwaysinline {
-  %old = load <16 x i32>* %ptr
+  %old = load <16 x i32>, <16 x i32> * %ptr
   %sel = select <16 x i1> %mask, <16 x i32> %new, <16 x i32> %old
   store <16 x i32> %sel, <16 x i32>* %ptr
   ret void
@@ -717,7 +718,7 @@ define void @__masked_store_blend_i32(<16 x i32>* nocapture %ptr, <16 x i32> %ne
 
 define void @__masked_store_blend_i64(<16 x i64>* nocapture %ptr, <16 x i64> %new, 
                                       <16 x MASK> %mask) nounwind alwaysinline {
-  %old = load <16 x i64>* %ptr
+  %old = load <16 x i64>, <16 x i64> * %ptr
   %sel = select <16 x i1> %mask, <16 x i64> %new, <16 x i64> %old
   store <16 x i64> %sel, <16 x i64>* %ptr
   ret void

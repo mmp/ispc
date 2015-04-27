@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2010-2012, Intel Corporation
+  Copyright (c) 2010-2015, Intel Corporation
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -294,6 +294,26 @@ CAST_BITS_SCALAR(uint64_t, double)
 CAST_BITS_SCALAR(int64_t, double)
 CAST_BITS_SCALAR(double, uint64_t)
 CAST_BITS_SCALAR(double, int64_t)
+
+#define CAST_BITS_TRIVIAL(TYPE)                  \
+static FORCEINLINE TYPE __cast_bits(TYPE, TYPE v) { return v; }
+
+CAST_BITS_TRIVIAL(float)
+CAST_BITS_TRIVIAL(double)
+CAST_BITS_TRIVIAL(int8_t)
+CAST_BITS_TRIVIAL(uint8_t)
+CAST_BITS_TRIVIAL(int16_t)
+CAST_BITS_TRIVIAL(uint16_t)
+CAST_BITS_TRIVIAL(int32_t)
+CAST_BITS_TRIVIAL(uint32_t)
+CAST_BITS_TRIVIAL(int64_t)
+CAST_BITS_TRIVIAL(uint64_t)
+CAST_BITS_TRIVIAL(__vec4_f)
+CAST_BITS_TRIVIAL(__vec4_d)
+CAST_BITS_TRIVIAL(__vec4_i8)
+CAST_BITS_TRIVIAL(__vec4_i16)
+CAST_BITS_TRIVIAL(__vec4_i32)
+CAST_BITS_TRIVIAL(__vec4_i64)
 
 #define CMP_AND_MASK_ONE(FUNC, TYPE)                                        \
 static FORCEINLINE __vec4_i1 FUNC##_and_mask(TYPE a, TYPE b, __vec4_i1 m) { \
@@ -3898,6 +3918,15 @@ static FORCEINLINE void __prefetch_read_uniform_nt(unsigned char *ptr) {
     _mm_prefetch((char *)ptr, _MM_HINT_NTA);
 }
 
+#define PREFETCH_READ_VARYING(CACHE_NUM)                                                                    \
+static FORCEINLINE void __prefetch_read_varying_##CACHE_NUM##_native(uint8_t *base, uint32_t scale,         \
+                                                                   __vec4_i32 offsets, __vec4_i1 mask) {}   \
+static FORCEINLINE void __prefetch_read_varying_##CACHE_NUM(__vec4_i64 addr, __vec4_i1 mask) {}             \
+
+PREFETCH_READ_VARYING(1)
+PREFETCH_READ_VARYING(2)
+PREFETCH_READ_VARYING(3)
+PREFETCH_READ_VARYING(nt)
 ///////////////////////////////////////////////////////////////////////////
 // atomics
 

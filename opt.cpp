@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2010-2014, Intel Corporation
+  Copyright (c) 2010-2015, Intel Corporation
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -55,6 +55,9 @@
   #include <llvm/Function.h>
   #include <llvm/BasicBlock.h>
   #include <llvm/Constants.h>
+#ifdef ISPC_NVPTX_ENABLED
+  #include <llvm/InlineAsm.h>
+#endif /* ISPC_NVPTX_ENABLED */
 #else
   #include <llvm/IR/Module.h>
   #include <llvm/IR/Instructions.h>
@@ -62,11 +65,18 @@
   #include <llvm/IR/Function.h>
   #include <llvm/IR/BasicBlock.h>
   #include <llvm/IR/Constants.h>
+#ifdef ISPC_NVPTX_ENABLED
+  #include <llvm/IR/InlineAsm.h>
+#endif /* ISPC_NVPTX_ENABLED */
 #endif
 #if !defined(LLVM_3_2) && !defined(LLVM_3_3) // LLVM 3.4+
   #include <llvm/Transforms/Instrumentation.h>
 #endif
-#include <llvm/PassManager.h>
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
+  #include "llvm/PassManager.h"
+#else // LLVM 3.7+
+  #include "llvm/IR/LegacyPassManager.h"
+#endif
 #include <llvm/PassRegistry.h>
 #if !defined(LLVM_3_2) && !defined(LLVM_3_3) && !defined(LLVM_3_4) // LLVM 3.5+
     #include <llvm/IR/Verifier.h>
@@ -80,7 +90,11 @@
     #include <llvm/DebugInfo.h>
 #endif
 #include <llvm/Analysis/ConstantFolding.h>
-#include <llvm/Target/TargetLibraryInfo.h>
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
+    #include <llvm/Target/TargetLibraryInfo.h>
+#else // LLVM 3.7+
+    #include <llvm/Analysis/TargetLibraryInfo.h>
+#endif
 #include <llvm/ADT/Triple.h>
 #include <llvm/ADT/SmallSet.h>
 #include <llvm/Transforms/Scalar.h>
@@ -97,6 +111,9 @@
 #include <llvm/Analysis/Passes.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Support/Dwarf.h>
+#if !defined(LLVM_3_2) && !defined(LLVM_3_3) && !defined(LLVM_3_4) && !defined(LLVM_3_5)
+  #include <llvm/IR/IntrinsicInst.h>
+#endif
 #ifdef ISPC_IS_LINUX
   #include <alloca.h>
 #elif defined(ISPC_IS_WINDOWS)
@@ -129,6 +146,9 @@ static llvm::Pass *CreateDebugPass(char * output);
 static llvm::Pass *CreateReplaceStdlibShiftPass();
 
 static llvm::Pass *CreateFixBooleanSelectPass();
+#ifdef ISPC_NVPTX_ENABLED
+static llvm::Pass *CreatePromoteLocalToPrivatePass();
+#endif /* ISPC_NVPTX_ENABLED */
 
 #define DEBUG_START_PASS(NAME)                                 \
     if (g->debugPrint &&                                       \
@@ -174,6 +194,7 @@ lCopyMetadata(llvm::Value *vto, const llvm::Instruction *from) {
         return;
 
     llvm::SmallVector<std::pair<unsigned int, llvm::MDNode *>, 8> metadata;
+
     from->getAllMetadata(metadata);
     for (unsigned int i = 0; i < metadata.size(); ++i)
         to->setMetadata(metadata[i].first, metadata[i].second);
@@ -208,6 +229,7 @@ lGetSourcePosFromMetadata(const llvm::Instruction *inst, SourcePos *pos) {
     llvm::MDNode *first_column = inst->getMetadata("first_column");
     llvm::MDNode *last_line = inst->getMetadata("last_line");
     llvm::MDNode *last_column = inst->getMetadata("last_column");
+
     if (!filename || !first_line || !first_column || !last_line || !last_column)
         return false;
 
@@ -216,16 +238,35 @@ lGetSourcePosFromMetadata(const llvm::Instruction *inst, SourcePos *pos) {
     llvm::MDString *str = llvm::dyn_cast<llvm::MDString>(filename->getOperand(0));
     Assert(str);
     llvm::ConstantInt *first_lnum =
+#if defined (LLVM_3_2) || defined (LLVM_3_3)|| defined (LLVM_3_4)|| defined (LLVM_3_5)
         llvm::dyn_cast<llvm::ConstantInt>(first_line->getOperand(0));
+#else // LLVN 3.6++
+        llvm::mdconst::extract<llvm::ConstantInt>(first_line->getOperand(0));
+#endif
     Assert(first_lnum);
+
     llvm::ConstantInt *first_colnum =
+#if defined (LLVM_3_2) || defined (LLVM_3_3)|| defined (LLVM_3_4)|| defined (LLVM_3_5)
         llvm::dyn_cast<llvm::ConstantInt>(first_column->getOperand(0));
+#else // LLVN 3.6++
+        llvm::mdconst::extract<llvm::ConstantInt>(first_column->getOperand(0));
+#endif
     Assert(first_column);
+
     llvm::ConstantInt *last_lnum =
+#if defined (LLVM_3_2) || defined (LLVM_3_3)|| defined (LLVM_3_4)|| defined (LLVM_3_5)
         llvm::dyn_cast<llvm::ConstantInt>(last_line->getOperand(0));
+#else // LLVN 3.6++
+        llvm::mdconst::extract<llvm::ConstantInt>(last_line->getOperand(0));
+#endif
     Assert(last_lnum);
+
     llvm::ConstantInt *last_colnum =
+#if defined (LLVM_3_2) || defined (LLVM_3_3)|| defined (LLVM_3_4)|| defined (LLVM_3_5)
         llvm::dyn_cast<llvm::ConstantInt>(last_column->getOperand(0));
+#else // LLVN 3.6++
+        llvm::mdconst::extract<llvm::ConstantInt>(last_column->getOperand(0));
+#endif
     Assert(last_column);
 
     *pos = SourcePos(str->getString().data(), (int)first_lnum->getZExtValue(),
@@ -289,8 +330,13 @@ lGEPInst(llvm::Value *ptr, llvm::Value *offset, const char *name,
          llvm::Instruction *insertBefore) {
     llvm::Value *index[1] = { offset };
     llvm::ArrayRef<llvm::Value *> arrayRef(&index[0], &index[1]);
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
     return llvm::GetElementPtrInst::Create(ptr, arrayRef, name,
                                            insertBefore);
+#else // LLVM 3.7++
+    return llvm::GetElementPtrInst::Create(PTYPE(ptr), ptr, arrayRef,
+                                           name, insertBefore);
+#endif
 }
 
 
@@ -353,6 +399,8 @@ lGetMask(llvm::Value *factor, uint64_t *mask) {
                 llvm::dyn_cast<llvm::Constant>(cv->getOperand(i));
             if (c == NULL)
                 return false;
+            if (llvm::isa<llvm::ConstantExpr>(cv->getOperand(i)) )
+                return false; // We can not handle constant expressions here
             elements.push_back(c);
         }
         *mask = lConstElementsToMask(elements);
@@ -418,10 +466,17 @@ public:
     DebugPassManager():number(0){}
     void add(llvm::Pass * P, int stage);
     bool run(llvm::Module& M) {return PM.run(M);}
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
     llvm::PassManager& getPM() {return PM;}
-
+#else // LLVM 3.7+
+    llvm::legacy::PassManager& getPM() {return PM;}
+#endif
 private:
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
     llvm::PassManager PM;
+#else // LLVM 3.7+
+    llvm::legacy::PassManager PM;
+#endif
     int number;
 };
 
@@ -445,7 +500,7 @@ DebugPassManager::add(llvm::Pass * P, int stage = -1) {
             PM.add(CreateDebugPass(buf));
         }
 
-#if !defined(LLVM_3_2) && !defined(LLVM_3_3) // LLVM 3.4+
+#if defined(LLVM_3_4) || defined(LLVM_3_5) // only 3.4 and 3.5
         if (g->debugIR == number) {
             // adding generating of LLVM IR debug after optimization
             char buf[100];
@@ -466,23 +521,33 @@ Optimize(llvm::Module *module, int optLevel) {
     DebugPassManager optPM;
     optPM.add(llvm::createVerifierPass(),0);
 
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
     llvm::TargetLibraryInfo *targetLibraryInfo =
         new llvm::TargetLibraryInfo(llvm::Triple(module->getTargetTriple()));
     optPM.add(targetLibraryInfo);
-
-#if !defined(LLVM_3_2) && !defined(LLVM_3_3) && !defined(LLVM_3_4) // LLVM 3.5+
-    optPM.add(new llvm::DataLayoutPass(*g->target->getDataLayout()));
-#else
-    optPM.add(new llvm::DataLayout(*g->target->getDataLayout()));
+#else // LLVM 3.7+
+    optPM.add(new llvm::TargetLibraryInfoWrapperPass(llvm::Triple(module->getTargetTriple())));
 #endif
+
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4)
+    optPM.add(new llvm::DataLayout(*g->target->getDataLayout()));
+#elif defined(LLVM_3_5)
+    optPM.add(new llvm::DataLayoutPass(*g->target->getDataLayout()));
+#elif defined(LLVM_3_6)
+    llvm::DataLayoutPass *dlp= new llvm::DataLayoutPass();
+    dlp->doInitialization(*module);
+    optPM.add(dlp);
+#endif // LLVM 3.7+ doesn't have DataLayoutPass anymore.
 
     llvm::TargetMachine *targetMachine = g->target->GetTargetMachine();
 
 #ifdef LLVM_3_2
     optPM.add(new llvm::TargetTransformInfo(targetMachine->getScalarTargetTransformInfo(),
                                             targetMachine->getVectorTargetTransformInfo()));
-#else // LLVM 3.3+
+#elif defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6) // LLVM 3.3 - 3.6
     targetMachine->addAnalysisPasses(optPM.getPM());
+#else // LLVM 3.7+
+    optPM.getPM().add(createTargetTransformInfoWrapperPass(targetMachine->getTargetIRAnalysis()));
 #endif
 
     optPM.add(llvm::createIndVarSimplifyPass());
@@ -494,6 +559,12 @@ Optimize(llvm::Module *module, int optLevel) {
         // take the various __pseudo_* functions it has emitted and turn
         // them into something that can actually execute.
         optPM.add(CreateImproveMemoryOpsPass(), 100);
+#ifdef ISPC_NVPTX_ENABLED
+        if (g->opt.disableGatherScatterOptimizations == false &&
+            g->target->getVectorWidth() > 1) 
+#endif /* ISPC_NVPTX_ENABLED */
+          optPM.add(CreateImproveMemoryOpsPass(), 100);
+
         if (g->opt.disableHandlePseudoMemoryOps == false)
             optPM.add(CreateReplacePseudoMemoryOpsPass());
 
@@ -572,7 +643,12 @@ Optimize(llvm::Module *module, int optLevel) {
         optPM.add(llvm::createGlobalOptimizerPass());
         optPM.add(llvm::createReassociatePass());
         optPM.add(llvm::createIPConstantPropagationPass());
-        optPM.add(CreateReplaceStdlibShiftPass(),229);
+
+#ifdef ISPC_NVPTX_ENABLED
+        if (g->target->getISA() != Target::NVPTX)
+#endif /* ISPC_NVPTX_ENABLED */
+          optPM.add(CreateReplaceStdlibShiftPass(),229);
+
         optPM.add(llvm::createDeadArgEliminationPass(),230);
         optPM.add(llvm::createInstructionCombiningPass());
         optPM.add(llvm::createCFGSimplificationPass());
@@ -684,6 +760,113 @@ Optimize(llvm::Module *module, int optLevel) {
 
         // Should be the last
         optPM.add(CreateFixBooleanSelectPass(), 400);
+#ifdef ISPC_NVPTX_ENABLED
+        if (g->target->getISA() == Target::NVPTX)
+        {
+          optPM.add(CreatePromoteLocalToPrivatePass());
+          optPM.add(llvm::createGlobalDCEPass());
+
+          optPM.add(llvm::createTypeBasedAliasAnalysisPass());
+          optPM.add(llvm::createBasicAliasAnalysisPass());
+          optPM.add(llvm::createCFGSimplificationPass());
+          // Here clang has an experimental pass SROAPass instead of
+          // ScalarReplAggregatesPass. We should add it in the future.
+          optPM.add(llvm::createScalarReplAggregatesPass());
+          optPM.add(llvm::createEarlyCSEPass());
+          optPM.add(llvm::createLowerExpectIntrinsicPass());
+          optPM.add(llvm::createTypeBasedAliasAnalysisPass());
+          optPM.add(llvm::createBasicAliasAnalysisPass());
+
+          // Early optimizations to try to reduce the total amount of code to
+          // work with if we can
+          optPM.add(llvm::createReassociatePass());
+          optPM.add(llvm::createConstantPropagationPass());
+          optPM.add(llvm::createDeadInstEliminationPass());
+          optPM.add(llvm::createCFGSimplificationPass());
+
+          optPM.add(llvm::createPromoteMemoryToRegisterPass());
+          optPM.add(llvm::createAggressiveDCEPass());
+
+
+          optPM.add(llvm::createInstructionCombiningPass());
+          optPM.add(llvm::createDeadInstEliminationPass());
+
+          // On to more serious optimizations
+          optPM.add(llvm::createInstructionCombiningPass());
+          optPM.add(llvm::createCFGSimplificationPass());
+          optPM.add(llvm::createPromoteMemoryToRegisterPass());
+          optPM.add(llvm::createGlobalOptimizerPass());
+          optPM.add(llvm::createReassociatePass());
+          optPM.add(llvm::createIPConstantPropagationPass());
+
+          optPM.add(llvm::createDeadArgEliminationPass());
+          optPM.add(llvm::createInstructionCombiningPass());
+          optPM.add(llvm::createCFGSimplificationPass());
+          optPM.add(llvm::createPruneEHPass());
+          optPM.add(llvm::createFunctionAttrsPass());
+          optPM.add(llvm::createFunctionInliningPass());
+          optPM.add(llvm::createConstantPropagationPass());
+          optPM.add(llvm::createDeadInstEliminationPass());
+          optPM.add(llvm::createCFGSimplificationPass());
+
+          optPM.add(llvm::createArgumentPromotionPass());
+#if defined(LLVM_3_1) || defined(LLVM_3_2) || defined(LLVM_3_3)
+          // Starting from 3.4 this functionality was moved to
+          // InstructionCombiningPass. See r184459 for details.
+          optPM.add(llvm::createSimplifyLibCallsPass());
+#endif
+          optPM.add(llvm::createAggressiveDCEPass());
+          optPM.add(llvm::createInstructionCombiningPass());
+          optPM.add(llvm::createJumpThreadingPass());
+          optPM.add(llvm::createCFGSimplificationPass());
+          optPM.add(llvm::createInstructionCombiningPass());
+          optPM.add(llvm::createTailCallEliminationPass());
+
+          optPM.add(llvm::createInstructionCombiningPass());
+
+          optPM.add(llvm::createFunctionInliningPass());
+          optPM.add(llvm::createConstantPropagationPass());
+
+          optPM.add(llvm::createInstructionCombiningPass());
+
+          optPM.add(llvm::createIPSCCPPass());
+          optPM.add(llvm::createDeadArgEliminationPass());
+          optPM.add(llvm::createAggressiveDCEPass());
+          optPM.add(llvm::createInstructionCombiningPass());
+          optPM.add(llvm::createCFGSimplificationPass());
+
+          optPM.add(llvm::createFunctionInliningPass());
+          optPM.add(llvm::createArgumentPromotionPass());
+          optPM.add(llvm::createInstructionCombiningPass());
+          optPM.add(llvm::createCFGSimplificationPass());
+          optPM.add(llvm::createReassociatePass());
+          optPM.add(llvm::createLoopRotatePass());
+          optPM.add(llvm::createLICMPass());
+//          optPM.add(llvm::createLoopUnswitchPass(false));
+#if 1
+          optPM.add(llvm::createInstructionCombiningPass());
+          optPM.add(llvm::createIndVarSimplifyPass());
+          optPM.add(llvm::createLoopIdiomPass());
+          optPM.add(llvm::createLoopDeletionPass());
+          optPM.add(llvm::createLoopUnrollPass());
+          optPM.add(llvm::createGVNPass());
+          optPM.add(llvm::createMemCpyOptPass());
+          optPM.add(llvm::createSCCPPass());
+          optPM.add(llvm::createInstructionCombiningPass());
+          optPM.add(llvm::createJumpThreadingPass());
+          optPM.add(llvm::createCorrelatedValuePropagationPass());
+          optPM.add(llvm::createDeadStoreEliminationPass());
+          optPM.add(llvm::createAggressiveDCEPass());
+          optPM.add(llvm::createCFGSimplificationPass());
+          optPM.add(llvm::createInstructionCombiningPass());
+          optPM.add(llvm::createFunctionInliningPass());
+          optPM.add(llvm::createAggressiveDCEPass());
+          optPM.add(llvm::createStripDeadPrototypesPass());
+          optPM.add(llvm::createGlobalDCEPass());
+          optPM.add(llvm::createConstantMergePass());
+#endif
+        }
+#endif /* ISPC_NVPTX_ENABLED */
     }
 
     // Finish up by making sure we didn't mess anything up in the IR along
@@ -1064,7 +1247,11 @@ InstructionSimplifyPass::simplifyBoolVec(llvm::Value *value) {
             zext->getOperand(0)->getType() == LLVMTypes::Int1VectorType)
             return zext->getOperand(0);
     }
-
+    /*
+      // This optimization has discernable benefit on the perf 
+      // suite on latest LLVM versions.
+      // On 3.4+ (maybe even older), it can result in illegal 
+      // operations, so it's being disabled.
     llvm::ICmpInst *icmp = llvm::dyn_cast<llvm::ICmpInst>(value);
     if (icmp != NULL) {
         // icmp(ne, {sext,zext}(foo), zeroinitializer) -> foo
@@ -1080,7 +1267,9 @@ InstructionSimplifyPass::simplifyBoolVec(llvm::Value *value) {
                     return zext->getOperand(0);
             }
         }
+
     }
+    */
     return NULL;
 }
 
@@ -2010,8 +2199,8 @@ static bool
 lGSToGSBaseOffsets(llvm::CallInst *callInst) {
     struct GSInfo {
         GSInfo(const char *pgFuncName, const char *pgboFuncName,
-               const char *pgbo32FuncName, bool ig)
-            : isGather(ig) {
+               const char *pgbo32FuncName, bool ig, bool ip)
+            : isGather(ig), isPrefetch(ip) {
             func = m->module->getFunction(pgFuncName);
             baseOffsetsFunc = m->module->getFunction(pgboFuncName);
             baseOffsets32Func = m->module->getFunction(pgbo32FuncName);
@@ -2019,6 +2208,7 @@ lGSToGSBaseOffsets(llvm::CallInst *callInst) {
         llvm::Function *func;
         llvm::Function *baseOffsetsFunc, *baseOffsets32Func;
         const bool isGather;
+        const bool isPrefetch;
     };
 
     GSInfo gsFuncs[] = {
@@ -2027,148 +2217,176 @@ lGSToGSBaseOffsets(llvm::CallInst *callInst) {
                "__pseudo_gather_factored_base_offsets32_i8",
                g->target->hasGather() ? "__pseudo_gather_base_offsets32_i8" :
                "__pseudo_gather_factored_base_offsets32_i8",
-               true),
+               true, false),
         GSInfo("__pseudo_gather32_i16",
                g->target->hasGather() ? "__pseudo_gather_base_offsets32_i16" :
                "__pseudo_gather_factored_base_offsets32_i16",
                g->target->hasGather() ? "__pseudo_gather_base_offsets32_i16" :
                "__pseudo_gather_factored_base_offsets32_i16",
-               true),
+               true, false),
         GSInfo("__pseudo_gather32_i32",
                g->target->hasGather() ? "__pseudo_gather_base_offsets32_i32" :
                "__pseudo_gather_factored_base_offsets32_i32",
                g->target->hasGather() ? "__pseudo_gather_base_offsets32_i32" :
                "__pseudo_gather_factored_base_offsets32_i32",
-               true),
+               true, false),
         GSInfo("__pseudo_gather32_float",
                g->target->hasGather() ? "__pseudo_gather_base_offsets32_float" :
                "__pseudo_gather_factored_base_offsets32_float",
                g->target->hasGather() ? "__pseudo_gather_base_offsets32_float" :
                "__pseudo_gather_factored_base_offsets32_float",
-               true),
+               true, false),
         GSInfo("__pseudo_gather32_i64",
                g->target->hasGather() ? "__pseudo_gather_base_offsets32_i64" :
                "__pseudo_gather_factored_base_offsets32_i64",
                g->target->hasGather() ? "__pseudo_gather_base_offsets32_i64" :
                "__pseudo_gather_factored_base_offsets32_i64",
-               true),
+               true, false),
         GSInfo("__pseudo_gather32_double",
                g->target->hasGather() ? "__pseudo_gather_base_offsets32_double" :
                "__pseudo_gather_factored_base_offsets32_double",
                g->target->hasGather() ? "__pseudo_gather_base_offsets32_double" :
                "__pseudo_gather_factored_base_offsets32_double",
-               true),
+               true, false),
 
         GSInfo("__pseudo_scatter32_i8",
                g->target->hasScatter() ? "__pseudo_scatter_base_offsets32_i8" :
                "__pseudo_scatter_factored_base_offsets32_i8",
                g->target->hasScatter() ? "__pseudo_scatter_base_offsets32_i8" :
                "__pseudo_scatter_factored_base_offsets32_i8",
-               false),
+               false, false),
         GSInfo("__pseudo_scatter32_i16",
                g->target->hasScatter() ? "__pseudo_scatter_base_offsets32_i16" :
                "__pseudo_scatter_factored_base_offsets32_i16",
                g->target->hasScatter() ? "__pseudo_scatter_base_offsets32_i16" :
                "__pseudo_scatter_factored_base_offsets32_i16",
-               false),
+               false, false),
         GSInfo("__pseudo_scatter32_i32",
                g->target->hasScatter() ? "__pseudo_scatter_base_offsets32_i32" :
                "__pseudo_scatter_factored_base_offsets32_i32",
                g->target->hasScatter() ? "__pseudo_scatter_base_offsets32_i32" :
                "__pseudo_scatter_factored_base_offsets32_i32",
-               false),
+               false, false),
         GSInfo("__pseudo_scatter32_float",
                g->target->hasScatter() ? "__pseudo_scatter_base_offsets32_float" :
                "__pseudo_scatter_factored_base_offsets32_float",
                g->target->hasScatter() ? "__pseudo_scatter_base_offsets32_float" :
                "__pseudo_scatter_factored_base_offsets32_float",
-               false),
+               false, false),
         GSInfo("__pseudo_scatter32_i64",
                g->target->hasScatter() ? "__pseudo_scatter_base_offsets32_i64" :
                "__pseudo_scatter_factored_base_offsets32_i64",
                g->target->hasScatter() ? "__pseudo_scatter_base_offsets32_i64" :
                "__pseudo_scatter_factored_base_offsets32_i64",
-               false),
+               false, false),
         GSInfo("__pseudo_scatter32_double",
                g->target->hasScatter() ? "__pseudo_scatter_base_offsets32_double" :
                "__pseudo_scatter_factored_base_offsets32_double",
                g->target->hasScatter() ? "__pseudo_scatter_base_offsets32_double" :
                "__pseudo_scatter_factored_base_offsets32_double",
-               false),
+               false, false),
 
         GSInfo("__pseudo_gather64_i8",
                g->target->hasGather() ? "__pseudo_gather_base_offsets64_i8" :
                "__pseudo_gather_factored_base_offsets64_i8",
                g->target->hasGather() ? "__pseudo_gather_base_offsets32_i8" :
                "__pseudo_gather_factored_base_offsets32_i8",
-               true),
+               true, false),
         GSInfo("__pseudo_gather64_i16",
                g->target->hasGather() ? "__pseudo_gather_base_offsets64_i16" :
                "__pseudo_gather_factored_base_offsets64_i16",
                g->target->hasGather() ? "__pseudo_gather_base_offsets32_i16" :
                "__pseudo_gather_factored_base_offsets32_i16",
-               true),
+               true, false),
         GSInfo("__pseudo_gather64_i32",
                g->target->hasGather() ? "__pseudo_gather_base_offsets64_i32" :
                "__pseudo_gather_factored_base_offsets64_i32",
                g->target->hasGather() ? "__pseudo_gather_base_offsets32_i32" :
                "__pseudo_gather_factored_base_offsets32_i32",
-               true),
+               true, false),
         GSInfo("__pseudo_gather64_float",
                g->target->hasGather() ? "__pseudo_gather_base_offsets64_float" :
                "__pseudo_gather_factored_base_offsets64_float",
                g->target->hasGather() ? "__pseudo_gather_base_offsets32_float" :
                "__pseudo_gather_factored_base_offsets32_float",
-               true),
+               true, false),
         GSInfo("__pseudo_gather64_i64",
                g->target->hasGather() ? "__pseudo_gather_base_offsets64_i64" :
                "__pseudo_gather_factored_base_offsets64_i64",
                g->target->hasGather() ? "__pseudo_gather_base_offsets32_i64" :
                "__pseudo_gather_factored_base_offsets32_i64",
-               true),
+               true, false),
         GSInfo("__pseudo_gather64_double",
                g->target->hasGather() ? "__pseudo_gather_base_offsets64_double" :
                "__pseudo_gather_factored_base_offsets64_double",
                g->target->hasGather() ? "__pseudo_gather_base_offsets32_double" :
                "__pseudo_gather_factored_base_offsets32_double",
-               true),
+               true, false),
 
         GSInfo("__pseudo_scatter64_i8",
                g->target->hasScatter() ? "__pseudo_scatter_base_offsets64_i8" :
                "__pseudo_scatter_factored_base_offsets64_i8",
                g->target->hasScatter() ? "__pseudo_scatter_base_offsets32_i8" :
                "__pseudo_scatter_factored_base_offsets32_i8",
-               false),
+               false, false),
         GSInfo("__pseudo_scatter64_i16",
                g->target->hasScatter() ? "__pseudo_scatter_base_offsets64_i16" :
                "__pseudo_scatter_factored_base_offsets64_i16",
                g->target->hasScatter() ? "__pseudo_scatter_base_offsets32_i16" :
                "__pseudo_scatter_factored_base_offsets32_i16",
-               false),
+               false, false),
         GSInfo("__pseudo_scatter64_i32",
                g->target->hasScatter() ? "__pseudo_scatter_base_offsets64_i32" :
                "__pseudo_scatter_factored_base_offsets64_i32",
                g->target->hasScatter() ? "__pseudo_scatter_base_offsets32_i32" :
                "__pseudo_scatter_factored_base_offsets32_i32",
-               false),
+               false, false),
         GSInfo("__pseudo_scatter64_float",
                g->target->hasScatter() ? "__pseudo_scatter_base_offsets64_float" :
                "__pseudo_scatter_factored_base_offsets64_float",
                g->target->hasScatter() ? "__pseudo_scatter_base_offsets32_float" :
                "__pseudo_scatter_factored_base_offsets32_float",
-               false),
+               false, false),
         GSInfo("__pseudo_scatter64_i64",
                g->target->hasScatter() ? "__pseudo_scatter_base_offsets64_i64" :
                "__pseudo_scatter_factored_base_offsets64_i64",
                g->target->hasScatter() ? "__pseudo_scatter_base_offsets32_i64" :
                "__pseudo_scatter_factored_base_offsets32_i64",
-               false),
+               false, false),
         GSInfo("__pseudo_scatter64_double",
                g->target->hasScatter() ? "__pseudo_scatter_base_offsets64_double" :
                "__pseudo_scatter_factored_base_offsets64_double",
                g->target->hasScatter() ? "__pseudo_scatter_base_offsets32_double" :
                "__pseudo_scatter_factored_base_offsets32_double",
-               false),
+               false, false),
+        
+        GSInfo("__pseudo_prefetch_read_varying_1",
+               g->target->hasVecPrefetch() ? "__pseudo_prefetch_read_varying_1_native" : 
+               "__prefetch_read_varying_1",
+               g->target->hasVecPrefetch() ? "__pseudo_prefetch_read_varying_1_native" : 
+               "__prefetch_read_varying_1",
+               false, true),
+
+        GSInfo("__pseudo_prefetch_read_varying_2",
+               g->target->hasVecPrefetch() ? "__pseudo_prefetch_read_varying_2_native" :
+               "__prefetch_read_varying_2",
+               g->target->hasVecPrefetch() ? "__pseudo_prefetch_read_varying_2_native" :
+               "__prefetch_read_varying_2",
+               false, true),
+
+        GSInfo("__pseudo_prefetch_read_varying_3",
+               g->target->hasVecPrefetch() ? "__pseudo_prefetch_read_varying_3_native" :
+               "__prefetch_read_varying_3",
+               g->target->hasVecPrefetch() ? "__pseudo_prefetch_read_varying_3_native" :
+               "__prefetch_read_varying_3",
+               false, true),
+
+        GSInfo("__pseudo_prefetch_read_varying_nt",
+               g->target->hasVecPrefetch() ? "__pseudo_prefetch_read_varying_nt_native" :
+               "__prefetch_read_varying_nt",
+               g->target->hasVecPrefetch() ? "__pseudo_prefetch_read_varying_nt_native" :
+               "__prefetch_read_varying_nt",
+               false, true),
     };
 
     int numGSFuncs = sizeof(gsFuncs) / sizeof(gsFuncs[0]);
@@ -2194,7 +2412,8 @@ lGSToGSBaseOffsets(llvm::CallInst *callInst) {
     llvm::Value *basePtr = lGetBasePtrAndOffsets(ptrs, &offsetVector,
                                                  callInst);
 
-    if (basePtr == NULL || offsetVector == NULL)
+    if (basePtr == NULL || offsetVector == NULL || 
+        (info->isGather == false && info->isPrefetch == true && g->target->hasVecPrefetch() == false))
         // It's actually a fully general gather/scatter with a varying
         // set of base pointers, so leave it as is and continune onward
         // to the next instruction...
@@ -2209,7 +2428,9 @@ lGSToGSBaseOffsets(llvm::CallInst *callInst) {
     llvm::Function *gatherScatterFunc = info->baseOffsetsFunc;
 
     if ((info->isGather == true && g->target->hasGather()) ||
-        (info->isGather == false && g->target->hasScatter())) {
+        (info->isGather == false && info->isPrefetch == false && g->target->hasScatter()) ||
+        (info->isGather == false && info->isPrefetch == true && g->target->hasVecPrefetch())) {
+
         // See if the offsets are scaled by 2, 4, or 8.  If so,
         // extract that scale factor and rewrite the offsets to remove
         // it.
@@ -2223,7 +2444,7 @@ lGSToGSBaseOffsets(llvm::CallInst *callInst) {
             gatherScatterFunc = info->baseOffsets32Func;
         }
 
-        if (info->isGather) {
+        if (info->isGather || info->isPrefetch) {
             llvm::Value *mask = callInst->getArgOperand(1);
 
             // Generate a new function call to the next pseudo gather
@@ -2280,7 +2501,7 @@ lGSToGSBaseOffsets(llvm::CallInst *callInst) {
             gatherScatterFunc = info->baseOffsets32Func;
         }
 
-        if (info->isGather) {
+        if (info->isGather || info->isPrefetch) {
             llvm::Value *mask = callInst->getArgOperand(1);
 
             // Generate a new function call to the next pseudo gather
@@ -2322,13 +2543,14 @@ lGSToGSBaseOffsets(llvm::CallInst *callInst) {
 static bool
 lGSBaseOffsetsGetMoreConst(llvm::CallInst *callInst) {
     struct GSBOInfo {
-        GSBOInfo(const char *pgboFuncName, const char *pgbo32FuncName, bool ig)
-            : isGather(ig) {
+        GSBOInfo(const char *pgboFuncName, const char *pgbo32FuncName, bool ig, bool ip)
+            : isGather(ig), isPrefetch(ip) {
             baseOffsetsFunc = m->module->getFunction(pgboFuncName);
             baseOffsets32Func = m->module->getFunction(pgbo32FuncName);
         }
         llvm::Function *baseOffsetsFunc, *baseOffsets32Func;
         const bool isGather;
+        const bool isPrefetch;
     };
 
     GSBOInfo gsFuncs[] = {
@@ -2336,63 +2558,87 @@ lGSBaseOffsetsGetMoreConst(llvm::CallInst *callInst) {
                                        "__pseudo_gather_factored_base_offsets32_i8",
                  g->target->hasGather() ? "__pseudo_gather_base_offsets32_i8" :
                                        "__pseudo_gather_factored_base_offsets32_i8",
-                 true),
+                 true, false),
         GSBOInfo(g->target->hasGather() ? "__pseudo_gather_base_offsets32_i16" :
                                        "__pseudo_gather_factored_base_offsets32_i16",
                  g->target->hasGather() ? "__pseudo_gather_base_offsets32_i16" :
                                        "__pseudo_gather_factored_base_offsets32_i16",
-                 true),
+                 true, false),
         GSBOInfo(g->target->hasGather() ? "__pseudo_gather_base_offsets32_i32" :
                                        "__pseudo_gather_factored_base_offsets32_i32",
                  g->target->hasGather() ? "__pseudo_gather_base_offsets32_i32" :
                                        "__pseudo_gather_factored_base_offsets32_i32",
-                 true),
+                 true, false),
         GSBOInfo(g->target->hasGather() ? "__pseudo_gather_base_offsets32_float" :
                                        "__pseudo_gather_factored_base_offsets32_float",
                  g->target->hasGather() ? "__pseudo_gather_base_offsets32_float" :
                                        "__pseudo_gather_factored_base_offsets32_float",
-                 true),
+                 true, false),
         GSBOInfo(g->target->hasGather() ? "__pseudo_gather_base_offsets32_i64" :
                                        "__pseudo_gather_factored_base_offsets32_i64",
                  g->target->hasGather() ? "__pseudo_gather_base_offsets32_i64" :
                                        "__pseudo_gather_factored_base_offsets32_i64",
-                 true),
+                 true, false),
         GSBOInfo(g->target->hasGather() ? "__pseudo_gather_base_offsets32_double" :
                                        "__pseudo_gather_factored_base_offsets32_double",
                  g->target->hasGather() ? "__pseudo_gather_base_offsets32_double" :
                                        "__pseudo_gather_factored_base_offsets32_double",
-                 true),
+                 true, false),
 
         GSBOInfo( g->target->hasScatter() ? "__pseudo_scatter_base_offsets32_i8" :
                                          "__pseudo_scatter_factored_base_offsets32_i8",
                   g->target->hasScatter() ? "__pseudo_scatter_base_offsets32_i8" :
                                          "__pseudo_scatter_factored_base_offsets32_i8",
-                  false),
+                  false, false),
         GSBOInfo(g->target->hasScatter() ? "__pseudo_scatter_base_offsets32_i16" :
                                         "__pseudo_scatter_factored_base_offsets32_i16",
                  g->target->hasScatter() ? "__pseudo_scatter_base_offsets32_i16" :
                                         "__pseudo_scatter_factored_base_offsets32_i16",
-                 false),
+                 false, false),
         GSBOInfo(g->target->hasScatter() ? "__pseudo_scatter_base_offsets32_i32" :
                                         "__pseudo_scatter_factored_base_offsets32_i32",
                  g->target->hasScatter() ? "__pseudo_scatter_base_offsets32_i32" :
                                         "__pseudo_scatter_factored_base_offsets32_i32",
-                 false),
+                 false, false),
         GSBOInfo(g->target->hasScatter() ? "__pseudo_scatter_base_offsets32_float" :
                                         "__pseudo_scatter_factored_base_offsets32_float",
                  g->target->hasScatter() ? "__pseudo_scatter_base_offsets32_float" :
                                         "__pseudo_scatter_factored_base_offsets32_float",
-                 false),
+                 false, false),
         GSBOInfo(g->target->hasScatter() ? "__pseudo_scatter_base_offsets32_i64" :
                                         "__pseudo_scatter_factored_base_offsets32_i64",
                  g->target->hasScatter() ? "__pseudo_scatter_base_offsets32_i64" :
                                         "__pseudo_scatter_factored_base_offsets32_i64",
-                 false),
+                 false, false),
         GSBOInfo(g->target->hasScatter() ? "__pseudo_scatter_base_offsets32_double" :
                                         "__pseudo_scatter_factored_base_offsets32_double",
                  g->target->hasScatter() ? "__pseudo_scatter_base_offsets32_double" :
                                         "__pseudo_scatter_factored_base_offsets32_double",
-                 false),
+                 false, false),
+
+        GSBOInfo(g->target->hasVecPrefetch() ? "__pseudo_prefetch_read_varying_1_native" :
+                                            "__prefetch_read_varying_1",
+                 g->target->hasVecPrefetch() ? "__pseudo_prefetch_read_varying_1_native" :
+                                            "__prefetch_read_varying_1",
+                 false, true),
+
+        GSBOInfo(g->target->hasVecPrefetch() ? "__pseudo_prefetch_read_varying_2_native" :
+                                            "__prefetch_read_varying_2",
+                 g->target->hasVecPrefetch() ? "__pseudo_prefetch_read_varying_2_native" :
+                                            "__prefetch_read_varying_2",
+                 false, true),
+
+        GSBOInfo(g->target->hasVecPrefetch() ? "__pseudo_prefetch_read_varying_3_native" :
+                                            "__prefetch_read_varying_3",
+                 g->target->hasVecPrefetch() ? "__pseudo_prefetch_read_varying_3_native" :
+                                            "__prefetch_read_varying_3",
+                 false, true),
+
+        GSBOInfo(g->target->hasVecPrefetch() ? "__pseudo_prefetch_read_varying_nt_native" :
+                                            "__prefetch_read_varying_nt",
+                 g->target->hasVecPrefetch() ? "__pseudo_prefetch_read_varying_nt_native" :
+                                            "__prefetch_read_varying_nt",
+                 false, true),
     };
 
     int numGSFuncs = sizeof(gsFuncs) / sizeof(gsFuncs[0]);
@@ -4183,149 +4429,170 @@ lReplacePseudoMaskedStore(llvm::CallInst *callInst) {
 static bool
 lReplacePseudoGS(llvm::CallInst *callInst) {
     struct LowerGSInfo {
-        LowerGSInfo(const char *pName, const char *aName, bool ig)
-            : isGather(ig) {
+        LowerGSInfo(const char *pName, const char *aName, bool ig, bool ip)
+            : isGather(ig), isPrefetch(ip) {
             pseudoFunc = m->module->getFunction(pName);
             actualFunc = m->module->getFunction(aName);
         }
         llvm::Function *pseudoFunc;
         llvm::Function *actualFunc;
         const bool isGather;
+        const bool isPrefetch;
     };
 
     LowerGSInfo lgsInfo[] = {
-        LowerGSInfo("__pseudo_gather32_i8",  "__gather32_i8",  true),
-        LowerGSInfo("__pseudo_gather32_i16", "__gather32_i16", true),
-        LowerGSInfo("__pseudo_gather32_i32", "__gather32_i32", true),
-        LowerGSInfo("__pseudo_gather32_float", "__gather32_float", true),
-        LowerGSInfo("__pseudo_gather32_i64", "__gather32_i64", true),
-        LowerGSInfo("__pseudo_gather32_double", "__gather32_double", true),
+        LowerGSInfo("__pseudo_gather32_i8",  "__gather32_i8",  true, false),
+        LowerGSInfo("__pseudo_gather32_i16", "__gather32_i16", true, false),
+        LowerGSInfo("__pseudo_gather32_i32", "__gather32_i32", true, false),
+        LowerGSInfo("__pseudo_gather32_float", "__gather32_float", true, false),
+        LowerGSInfo("__pseudo_gather32_i64", "__gather32_i64", true, false),
+        LowerGSInfo("__pseudo_gather32_double", "__gather32_double", true, false),
 
-        LowerGSInfo("__pseudo_gather64_i8",  "__gather64_i8",  true),
-        LowerGSInfo("__pseudo_gather64_i16", "__gather64_i16", true),
-        LowerGSInfo("__pseudo_gather64_i32", "__gather64_i32", true),
-        LowerGSInfo("__pseudo_gather64_float", "__gather64_float", true),
-        LowerGSInfo("__pseudo_gather64_i64", "__gather64_i64", true),
-        LowerGSInfo("__pseudo_gather64_double", "__gather64_double", true),
+        LowerGSInfo("__pseudo_gather64_i8",  "__gather64_i8",  true, false),
+        LowerGSInfo("__pseudo_gather64_i16", "__gather64_i16", true, false),
+        LowerGSInfo("__pseudo_gather64_i32", "__gather64_i32", true, false),
+        LowerGSInfo("__pseudo_gather64_float", "__gather64_float", true, false),
+        LowerGSInfo("__pseudo_gather64_i64", "__gather64_i64", true, false),
+        LowerGSInfo("__pseudo_gather64_double", "__gather64_double", true, false),
 
         LowerGSInfo("__pseudo_gather_factored_base_offsets32_i8",
-                    "__gather_factored_base_offsets32_i8",  true),
+                    "__gather_factored_base_offsets32_i8",  true, false),
         LowerGSInfo("__pseudo_gather_factored_base_offsets32_i16",
-                    "__gather_factored_base_offsets32_i16", true),
+                    "__gather_factored_base_offsets32_i16", true, false),
         LowerGSInfo("__pseudo_gather_factored_base_offsets32_i32",
-                    "__gather_factored_base_offsets32_i32", true),
+                    "__gather_factored_base_offsets32_i32", true, false),
         LowerGSInfo("__pseudo_gather_factored_base_offsets32_float",
-                    "__gather_factored_base_offsets32_float", true),
+                    "__gather_factored_base_offsets32_float", true, false),
         LowerGSInfo("__pseudo_gather_factored_base_offsets32_i64",
-                    "__gather_factored_base_offsets32_i64", true),
+                    "__gather_factored_base_offsets32_i64", true, false),
         LowerGSInfo("__pseudo_gather_factored_base_offsets32_double",
-                    "__gather_factored_base_offsets32_double", true),
+                    "__gather_factored_base_offsets32_double", true, false),
 
         LowerGSInfo("__pseudo_gather_factored_base_offsets64_i8",
-                    "__gather_factored_base_offsets64_i8",  true),
+                    "__gather_factored_base_offsets64_i8",  true, false),
         LowerGSInfo("__pseudo_gather_factored_base_offsets64_i16",
-                    "__gather_factored_base_offsets64_i16", true),
+                    "__gather_factored_base_offsets64_i16", true, false),
         LowerGSInfo("__pseudo_gather_factored_base_offsets64_i32",
-                    "__gather_factored_base_offsets64_i32", true),
+                    "__gather_factored_base_offsets64_i32", true, false),
         LowerGSInfo("__pseudo_gather_factored_base_offsets64_float",
-                    "__gather_factored_base_offsets64_float", true),
+                    "__gather_factored_base_offsets64_float", true, false),
         LowerGSInfo("__pseudo_gather_factored_base_offsets64_i64",
-                    "__gather_factored_base_offsets64_i64", true),
+                    "__gather_factored_base_offsets64_i64", true, false),
         LowerGSInfo("__pseudo_gather_factored_base_offsets64_double",
-                    "__gather_factored_base_offsets64_double", true),
+                    "__gather_factored_base_offsets64_double", true, false),
 
         LowerGSInfo("__pseudo_gather_base_offsets32_i8",
-                    "__gather_base_offsets32_i8",  true),
+                    "__gather_base_offsets32_i8",  true, false),
         LowerGSInfo("__pseudo_gather_base_offsets32_i16",
-                    "__gather_base_offsets32_i16", true),
+                    "__gather_base_offsets32_i16", true, false),
         LowerGSInfo("__pseudo_gather_base_offsets32_i32",
-                    "__gather_base_offsets32_i32", true),
+                    "__gather_base_offsets32_i32", true, false),
         LowerGSInfo("__pseudo_gather_base_offsets32_float",
-                    "__gather_base_offsets32_float", true),
+                    "__gather_base_offsets32_float", true, false),
         LowerGSInfo("__pseudo_gather_base_offsets32_i64",
-                    "__gather_base_offsets32_i64", true),
+                    "__gather_base_offsets32_i64", true, false),
         LowerGSInfo("__pseudo_gather_base_offsets32_double",
-                    "__gather_base_offsets32_double", true),
+                    "__gather_base_offsets32_double", true, false),
 
         LowerGSInfo("__pseudo_gather_base_offsets64_i8",
-                    "__gather_base_offsets64_i8",  true),
+                    "__gather_base_offsets64_i8",  true, false),
         LowerGSInfo("__pseudo_gather_base_offsets64_i16",
-                    "__gather_base_offsets64_i16", true),
+                    "__gather_base_offsets64_i16", true, false),
         LowerGSInfo("__pseudo_gather_base_offsets64_i32",
-                    "__gather_base_offsets64_i32", true),
+                    "__gather_base_offsets64_i32", true, false),
         LowerGSInfo("__pseudo_gather_base_offsets64_float",
-                    "__gather_base_offsets64_float", true),
+                    "__gather_base_offsets64_float", true, false),
         LowerGSInfo("__pseudo_gather_base_offsets64_i64",
-                    "__gather_base_offsets64_i64", true),
+                    "__gather_base_offsets64_i64", true, false),
         LowerGSInfo("__pseudo_gather_base_offsets64_double",
-                    "__gather_base_offsets64_double", true),
+                    "__gather_base_offsets64_double", true, false),
 
-        LowerGSInfo("__pseudo_scatter32_i8",  "__scatter32_i8",  false),
-        LowerGSInfo("__pseudo_scatter32_i16", "__scatter32_i16", false),
-        LowerGSInfo("__pseudo_scatter32_i32", "__scatter32_i32", false),
-        LowerGSInfo("__pseudo_scatter32_float", "__scatter32_float", false),
-        LowerGSInfo("__pseudo_scatter32_i64", "__scatter32_i64", false),
-        LowerGSInfo("__pseudo_scatter32_double", "__scatter32_double", false),
+        LowerGSInfo("__pseudo_scatter32_i8",  "__scatter32_i8",  false, false),
+        LowerGSInfo("__pseudo_scatter32_i16", "__scatter32_i16", false, false),
+        LowerGSInfo("__pseudo_scatter32_i32", "__scatter32_i32", false, false),
+        LowerGSInfo("__pseudo_scatter32_float", "__scatter32_float", false, false),
+        LowerGSInfo("__pseudo_scatter32_i64", "__scatter32_i64", false, false),
+        LowerGSInfo("__pseudo_scatter32_double", "__scatter32_double", false, false),
 
-        LowerGSInfo("__pseudo_scatter64_i8",  "__scatter64_i8",  false),
-        LowerGSInfo("__pseudo_scatter64_i16", "__scatter64_i16", false),
-        LowerGSInfo("__pseudo_scatter64_i32", "__scatter64_i32", false),
-        LowerGSInfo("__pseudo_scatter64_float", "__scatter64_float", false),
-        LowerGSInfo("__pseudo_scatter64_i64", "__scatter64_i64", false),
-        LowerGSInfo("__pseudo_scatter64_double", "__scatter64_double", false),
+        LowerGSInfo("__pseudo_scatter64_i8",  "__scatter64_i8",  false, false),
+        LowerGSInfo("__pseudo_scatter64_i16", "__scatter64_i16", false, false),
+        LowerGSInfo("__pseudo_scatter64_i32", "__scatter64_i32", false, false),
+        LowerGSInfo("__pseudo_scatter64_float", "__scatter64_float", false, false),
+        LowerGSInfo("__pseudo_scatter64_i64", "__scatter64_i64", false, false),
+        LowerGSInfo("__pseudo_scatter64_double", "__scatter64_double", false, false),
 
         LowerGSInfo("__pseudo_scatter_factored_base_offsets32_i8",
-                    "__scatter_factored_base_offsets32_i8",  false),
+                    "__scatter_factored_base_offsets32_i8",  false, false),
         LowerGSInfo("__pseudo_scatter_factored_base_offsets32_i16",
-                    "__scatter_factored_base_offsets32_i16", false),
+                    "__scatter_factored_base_offsets32_i16", false, false),
         LowerGSInfo("__pseudo_scatter_factored_base_offsets32_i32",
-                    "__scatter_factored_base_offsets32_i32", false),
+                    "__scatter_factored_base_offsets32_i32", false, false),
         LowerGSInfo("__pseudo_scatter_factored_base_offsets32_float",
-                    "__scatter_factored_base_offsets32_float", false),
+                    "__scatter_factored_base_offsets32_float", false, false),
         LowerGSInfo("__pseudo_scatter_factored_base_offsets32_i64",
-                    "__scatter_factored_base_offsets32_i64", false),
+                    "__scatter_factored_base_offsets32_i64", false, false),
         LowerGSInfo("__pseudo_scatter_factored_base_offsets32_double",
-                    "__scatter_factored_base_offsets32_double", false),
+                    "__scatter_factored_base_offsets32_double", false, false),
 
         LowerGSInfo("__pseudo_scatter_factored_base_offsets64_i8",
-                    "__scatter_factored_base_offsets64_i8",  false),
+                    "__scatter_factored_base_offsets64_i8",  false, false),
         LowerGSInfo("__pseudo_scatter_factored_base_offsets64_i16",
-                    "__scatter_factored_base_offsets64_i16", false),
+                    "__scatter_factored_base_offsets64_i16", false, false),
         LowerGSInfo("__pseudo_scatter_factored_base_offsets64_i32",
-                    "__scatter_factored_base_offsets64_i32", false),
+                    "__scatter_factored_base_offsets64_i32", false, false),
         LowerGSInfo("__pseudo_scatter_factored_base_offsets64_float",
-                    "__scatter_factored_base_offsets64_float", false),
+                    "__scatter_factored_base_offsets64_float", false, false),
         LowerGSInfo("__pseudo_scatter_factored_base_offsets64_i64",
-                    "__scatter_factored_base_offsets64_i64", false),
+                    "__scatter_factored_base_offsets64_i64", false, false),
         LowerGSInfo("__pseudo_scatter_factored_base_offsets64_double",
-                    "__scatter_factored_base_offsets64_double", false),
+                    "__scatter_factored_base_offsets64_double", false, false),
 
 
         LowerGSInfo("__pseudo_scatter_base_offsets32_i8",
-                    "__scatter_base_offsets32_i8",  false),
+                    "__scatter_base_offsets32_i8",  false, false),
         LowerGSInfo("__pseudo_scatter_base_offsets32_i16",
-                    "__scatter_base_offsets32_i16", false),
+                    "__scatter_base_offsets32_i16", false, false),
         LowerGSInfo("__pseudo_scatter_base_offsets32_i32",
-                    "__scatter_base_offsets32_i32", false),
+                    "__scatter_base_offsets32_i32", false, false),
         LowerGSInfo("__pseudo_scatter_base_offsets32_float",
-                    "__scatter_base_offsets32_float", false),
+                    "__scatter_base_offsets32_float", false, false),
         LowerGSInfo("__pseudo_scatter_base_offsets32_i64",
-                    "__scatter_base_offsets32_i64", false),
+                    "__scatter_base_offsets32_i64", false, false),
         LowerGSInfo("__pseudo_scatter_base_offsets32_double",
-                    "__scatter_base_offsets32_double", false),
+                    "__scatter_base_offsets32_double", false, false),
 
         LowerGSInfo("__pseudo_scatter_base_offsets64_i8",
-                    "__scatter_base_offsets64_i8",  false),
+                    "__scatter_base_offsets64_i8",  false, false),
         LowerGSInfo("__pseudo_scatter_base_offsets64_i16",
-                    "__scatter_base_offsets64_i16", false),
+                    "__scatter_base_offsets64_i16", false, false),
         LowerGSInfo("__pseudo_scatter_base_offsets64_i32",
-                    "__scatter_base_offsets64_i32", false),
+                    "__scatter_base_offsets64_i32", false, false),
         LowerGSInfo("__pseudo_scatter_base_offsets64_float",
-                    "__scatter_base_offsets64_float", false),
+                    "__scatter_base_offsets64_float", false, false),
         LowerGSInfo("__pseudo_scatter_base_offsets64_i64",
-                    "__scatter_base_offsets64_i64", false),
+                    "__scatter_base_offsets64_i64", false, false),
         LowerGSInfo("__pseudo_scatter_base_offsets64_double",
-                    "__scatter_base_offsets64_double", false),
+                    "__scatter_base_offsets64_double", false, false),
+
+        LowerGSInfo("__pseudo_prefetch_read_varying_1",
+                    "__prefetch_read_varying_1", false, true),
+        LowerGSInfo("__pseudo_prefetch_read_varying_1_native",
+                    "__prefetch_read_varying_1_native", false, true),
+
+        LowerGSInfo("__pseudo_prefetch_read_varying_2",
+                    "__prefetch_read_varying_2", false, true),
+        LowerGSInfo("__pseudo_prefetch_read_varying_2_native",
+                    "__prefetch_read_varying_2_native", false, true),
+
+        LowerGSInfo("__pseudo_prefetch_read_varying_3",
+                    "__prefetch_read_varying_3", false, true),
+        LowerGSInfo("__pseudo_prefetch_read_varying_3_native",
+                    "__prefetch_read_varying_3_native", false, true),
+
+        LowerGSInfo("__pseudo_prefetch_read_varying_nt",
+                    "__prefetch_read_varying_nt", false, true),
+        LowerGSInfo("__pseudo_prefetch_read_varying_nt_native",
+                    "__prefetch_read_varying_nt_native", false, true),
     };
 
     llvm::Function *calledFunc = callInst->getCalledFunction();
@@ -4352,7 +4619,7 @@ lReplacePseudoGS(llvm::CallInst *callInst) {
     if (gotPosition && g->target->getVectorWidth() > 1) {
         if (info->isGather)
             PerformanceWarning(pos, "Gather required to load value.");
-        else
+        else if (!info->isPrefetch)
             PerformanceWarning(pos, "Scatter required to store value.");
     }
     return true;
@@ -4633,6 +4900,8 @@ MakeInternalFuncsStaticPass::runOnModule(llvm::Module &module) {
         "__scatter64_i8", "__scatter64_i16",
         "__scatter64_i32", "__scatter64_i64",
         "__scatter64_float", "__scatter64_double",
+        "__prefetch_read_varying_1", "__prefetch_read_varying_2",
+        "__prefetch_read_varying_3", "__prefetch_read_varying_nt",
         "__keep_funcs_live",
     };
 
@@ -5315,4 +5584,94 @@ CreateFixBooleanSelectPass() {
     return new FixBooleanSelectPass();
 }
 
+#ifdef ISPC_NVPTX_ENABLED
+///////////////////////////////////////////////////////////////////////////////
+// Detect addrspace(3)
+///////////////////////////////////////////////////////////////////////////////
+
+class PromoteLocalToPrivatePass: public llvm::BasicBlockPass
+{
+  public:
+    static char ID; // Pass identification, replacement for typeid
+    PromoteLocalToPrivatePass() : BasicBlockPass(ID) {}
+
+    bool runOnBasicBlock(llvm::BasicBlock &BB);
+};
+
+char PromoteLocalToPrivatePass::ID = 0;
+
+bool 
+PromoteLocalToPrivatePass::runOnBasicBlock(llvm::BasicBlock &BB)
+{
+  std::vector<llvm::AllocaInst*> Allocas;
+
+  bool modifiedAny  = false;
+
+#if 1
+restart:
+  for (llvm::BasicBlock::iterator I = BB.begin(), E = --BB.end(); I != E; ++I)
+  {
+    llvm::Instruction *inst = &*I;
+    if (llvm::CallInst *ci = llvm::dyn_cast<llvm::CallInst>(inst))
+    {
+      llvm::Function *func = ci->getCalledFunction();
+      if (func && func->getName() == "llvm.trap")
+      {
+        std::vector<llvm::Type*> funcTyArgs;
+        llvm::FunctionType *funcTy = llvm::FunctionType::get(
+            /*Result=*/llvm::Type::getVoidTy(*g->ctx),
+            /*Params=*/funcTyArgs,
+            /*isVarArg=*/false);
+        llvm::InlineAsm *trap_ptx = llvm::InlineAsm::get(funcTy, "trap;", "", false);
+        assert(trap_ptx != NULL);
+        llvm::Instruction *trap_call = llvm::CallInst::Create(trap_ptx);
+        assert(trap_call != NULL);
+        llvm::ReplaceInstWithInst(ci, trap_call);
+        modifiedAny = true;
+        goto restart;
+      }
+    }
+  }
+#endif
+
+#if 0
+  llvm::Function *cvtFunc = m->module->getFunction("__cvt_loc2gen_var");
+
+  // Find allocas that are safe to promote, by looking at all instructions in
+  // the entry node
+  for (llvm::BasicBlock::iterator I = BB.begin(), E = --BB.end(); I != E; ++I)
+  {
+    llvm::Instruction *inst = &*I;
+    if (llvm::CallInst *ci = llvm::dyn_cast<llvm::CallInst>(inst))
+    {
+      llvm::Function *func = ci->getCalledFunction();
+      if (cvtFunc && (cvtFunc == func))
+      {
+#if 0
+        fprintf(stderr , "--found cvt-- name= %s \n",
+            I->getName().str().c_str());
+#endif
+        llvm::AllocaInst *alloca = new llvm::AllocaInst(LLVMTypes::Int64Type, "opt_loc2var", ci);
+        assert(alloca != NULL);
+#if 0
+        const int align = 8; // g->target->getNativeVectorAlignment();
+        alloca->setAlignment(align);
+#endif
+        ci->replaceAllUsesWith(alloca);
+        modifiedAny = true;
+      }
+    }
+  }
+#endif
+  return modifiedAny;
+}
+
+static llvm::Pass *
+CreatePromoteLocalToPrivatePass() {
+    return new PromoteLocalToPrivatePass();
+}
+
+
+
+#endif /* ISPC_NVPTX_ENABLED */
 

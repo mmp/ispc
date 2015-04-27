@@ -1,4 +1,4 @@
-;;  Copyright (c) 2010-2014, Intel Corporation
+;;  Copyright (c) 2010-2015, Intel Corporation
 ;;  All rights reserved.
 ;;
 ;;  Redistribution and use in source and binary forms, with or without
@@ -97,7 +97,7 @@ define void @__fastmath() nounwind alwaysinline {
   %ptr = alloca i32
   %ptr8 = bitcast i32 * %ptr to i8 *
   call void @llvm.x86.sse.stmxcsr(i8 * %ptr8)
-  %oldval = load i32 *%ptr
+  %oldval = load PTR_OP_ARGS(`i32 ') %ptr
 
   ; turn on DAZ (64)/FTZ (32768) -> 32832
   %update = or i32 %oldval, 32832
@@ -274,3 +274,4 @@ define i64 @__popcnt_int64(i64) nounwind readnone alwaysinline {
 
 define_avgs()
 
+declare_nvptx()

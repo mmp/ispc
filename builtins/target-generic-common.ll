@@ -1,4 +1,4 @@
-;;  Copyright (c) 2010-2014, Intel Corporation
+;;  Copyright (c) 2010-2015, Intel Corporation
 ;;  All rights reserved.
 ;;
 ;;  Redistribution and use in source and binary forms, with or without
@@ -278,7 +278,7 @@ declare void @__masked_store_double(<WIDTH x double>* nocapture, <WIDTH x double
 
 define void @__masked_store_blend_i8(<WIDTH x i8>* nocapture, <WIDTH x i8>, 
                                      <WIDTH x i1>) nounwind alwaysinline {
-  %v = load <WIDTH x i8> * %0
+  %v = load PTR_OP_ARGS(`<WIDTH x i8> ')  %0
   %v1 = select <WIDTH x i1> %2, <WIDTH x i8> %1, <WIDTH x i8> %v
   store <WIDTH x i8> %v1, <WIDTH x i8> * %0
   ret void
@@ -286,7 +286,7 @@ define void @__masked_store_blend_i8(<WIDTH x i8>* nocapture, <WIDTH x i8>,
 
 define void @__masked_store_blend_i16(<WIDTH x i16>* nocapture, <WIDTH x i16>, 
                                       <WIDTH x i1>) nounwind alwaysinline {
-  %v = load <WIDTH x i16> * %0
+  %v = load PTR_OP_ARGS(`<WIDTH x i16> ')  %0
   %v1 = select <WIDTH x i1> %2, <WIDTH x i16> %1, <WIDTH x i16> %v
   store <WIDTH x i16> %v1, <WIDTH x i16> * %0
   ret void
@@ -294,7 +294,7 @@ define void @__masked_store_blend_i16(<WIDTH x i16>* nocapture, <WIDTH x i16>,
 
 define void @__masked_store_blend_i32(<WIDTH x i32>* nocapture, <WIDTH x i32>, 
                                       <WIDTH x i1>) nounwind alwaysinline {
-  %v = load <WIDTH x i32> * %0
+  %v = load PTR_OP_ARGS(`<WIDTH x i32> ')  %0
   %v1 = select <WIDTH x i1> %2, <WIDTH x i32> %1, <WIDTH x i32> %v
   store <WIDTH x i32> %v1, <WIDTH x i32> * %0
   ret void
@@ -302,7 +302,7 @@ define void @__masked_store_blend_i32(<WIDTH x i32>* nocapture, <WIDTH x i32>,
 
 define void @__masked_store_blend_float(<WIDTH x float>* nocapture, <WIDTH x float>, 
                                         <WIDTH x i1>) nounwind alwaysinline {
-  %v = load <WIDTH x float> * %0
+  %v = load PTR_OP_ARGS(`<WIDTH x float> ')  %0
   %v1 = select <WIDTH x i1> %2, <WIDTH x float> %1, <WIDTH x float> %v
   store <WIDTH x float> %v1, <WIDTH x float> * %0
   ret void
@@ -310,7 +310,7 @@ define void @__masked_store_blend_float(<WIDTH x float>* nocapture, <WIDTH x flo
 
 define void @__masked_store_blend_i64(<WIDTH x i64>* nocapture,
                             <WIDTH x i64>, <WIDTH x i1>) nounwind alwaysinline {
-  %v = load <WIDTH x i64> * %0
+  %v = load PTR_OP_ARGS(`<WIDTH x i64> ')  %0
   %v1 = select <WIDTH x i1> %2, <WIDTH x i64> %1, <WIDTH x i64> %v
   store <WIDTH x i64> %v1, <WIDTH x i64> * %0
   ret void
@@ -318,7 +318,7 @@ define void @__masked_store_blend_i64(<WIDTH x i64>* nocapture,
 
 define void @__masked_store_blend_double(<WIDTH x double>* nocapture,
                             <WIDTH x double>, <WIDTH x i1>) nounwind alwaysinline {
-  %v = load <WIDTH x double> * %0
+  %v = load PTR_OP_ARGS(`<WIDTH x double> ')  %0
   %v1 = select <WIDTH x i1> %2, <WIDTH x double> %1, <WIDTH x double> %v
   store <WIDTH x double> %v1, <WIDTH x double> * %0
   ret void
@@ -370,10 +370,19 @@ declare void @__prefetch_read_uniform_2(i8 * nocapture) nounwind
 declare void @__prefetch_read_uniform_3(i8 * nocapture) nounwind 
 declare void @__prefetch_read_uniform_nt(i8 * nocapture) nounwind 
 
+declare void @__prefetch_read_varying_1(<WIDTH x i64> %addr, <WIDTH x MASK> %mask) nounwind
+declare void @__prefetch_read_varying_1_native(i8 * %base, i32 %scale, <WIDTH x i32> %offsets, <WIDTH x MASK> %mask) nounwind
+declare void @__prefetch_read_varying_2(<WIDTH x i64> %addr, <WIDTH x MASK> %mask) nounwind
+declare void @__prefetch_read_varying_2_native(i8 * %base, i32 %scale, <WIDTH x i32> %offsets, <WIDTH x MASK> %mask) nounwind
+declare void @__prefetch_read_varying_3(<WIDTH x i64> %addr, <WIDTH x MASK> %mask) nounwind
+declare void @__prefetch_read_varying_3_native(i8 * %base, i32 %scale, <WIDTH x i32> %offsets, <WIDTH x MASK> %mask) nounwind
+declare void @__prefetch_read_varying_nt(<WIDTH x i64> %addr, <WIDTH x MASK> %mask) nounwind
+declare void @__prefetch_read_varying_nt_native(i8 * %base, i32 %scale, <WIDTH x i32> %offsets, <WIDTH x MASK> %mask) nounwind
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; int8/int16 builtins
 
 define_avgs()
+declare_nvptx()
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; reciprocals in double precision, if supported

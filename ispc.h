@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2010-2014, Intel Corporation
+  Copyright (c) 2010-2015, Intel Corporation
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -38,10 +38,10 @@
 #ifndef ISPC_H
 #define ISPC_H
 
-#define ISPC_VERSION "1.7.1dev"
+#define ISPC_VERSION "1.8.2dev"
 
-#if !defined(LLVM_3_2) && !defined(LLVM_3_3) && !defined(LLVM_3_4) && !defined(LLVM_3_5) && !defined(LLVM_3_6)
-#error "Only LLVM 3.2, 3.3, 3.4, 3.5 and the 3.6 development branch are supported"
+#if !defined(LLVM_3_2) && !defined(LLVM_3_3) && !defined(LLVM_3_4) && !defined(LLVM_3_5) && !defined(LLVM_3_6) && !defined(LLVM_3_7)
+#error "Only LLVM 3.2, 3.3, 3.4, 3.5, 3.6 and 3.7 development branch are supported"
 #endif
 
 #if defined(_WIN32) || defined(_WIN64)
@@ -78,9 +78,6 @@ namespace llvm {
     class ConstantValue;
     class DataLayout;
     class DIBuilder;
-    class DIDescriptor;
-    class DIFile;
-    class DIType;
     class Function;
     class FunctionType;
     class LLVMContext;
@@ -89,6 +86,15 @@ namespace llvm {
     class TargetMachine;
     class Type;
     class Value;
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
+    class DIFile;
+    class DIType;
+    class DIDescriptor;
+#else // LLVM 3.7++
+    class MDFile;
+    class MDType;
+    class MDScope;
+#endif
 }
 
 
@@ -138,8 +144,13 @@ struct SourcePos {
     /** Prints the filename and line/column range to standard output. */
     void Print() const;
 
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
     /** Returns a LLVM DIFile object that represents the SourcePos's file */
     llvm::DIFile GetDIFile() const;
+#else
+    /** Returns a LLVM MDFile object that represents the SourcePos's file */
+    llvm::MDFile *GetDIFile() const;
+#endif
 
     bool operator==(const SourcePos &p2) const;
 };
@@ -176,16 +187,28 @@ public:
         also that __best_available_isa() needs to be updated if ISAs are
         added or the enumerant values are reordered.  */
     enum ISA {
-#ifdef ISPC_ARM_ENABLED
-               NEON32, NEON16, NEON8,
+        SSE2    = 0,
+        SSE4    = 1,
+        AVX     = 2,
+        AVX11   = 3,
+        AVX2    = 4,
+        KNL     = 5,
+        SKX     = 6,
+        AVX512  = 7,
+        GENERIC = 8,
+#ifdef ISPC_NVPTX_ENABLED
+        NVPTX,
 #endif
-               SSE2, SSE4, AVX, AVX11, AVX2, AVX512, GENERIC,
-               NUM_ISAS };
+#ifdef ISPC_ARM_ENABLED
+        NEON32, NEON16, NEON8,
+#endif
+        NUM_ISAS
+    };
 
     /** Initializes the given Target pointer for a target of the given
         name, if the name is a known target.  Returns true if the
         target was initialized and false if the name is unknown. */
-    Target(const char *arch, const char *cpu, const char *isa, bool pic);
+    Target(const char *arch, const char *cpu, const char *isa, bool pic, std::string genenricAsSmth = "");
 
     /** Returns a comma-delimited string giving the names of the currently
         supported compilation targets. */
@@ -244,6 +267,8 @@ public:
 
     ISA getISA() const {return m_isa;}
 
+    std::string getTreatGenericAsSmth() const {return m_treatGenericAsSmth;} 
+
     std::string getArch() const {return m_arch;}
 
     bool is32Bit() const {return m_is32Bit;}
@@ -280,6 +305,8 @@ public:
     
     bool hasRcpd() const {return m_hasRcpd;}
 
+    bool hasVecPrefetch() const {return m_hasVecPrefetch;}
+
 private:
 
     /** llvm Target object representing this target. */
@@ -302,6 +329,9 @@ private:
 
     /** Instruction set being compiled to. */
     ISA m_isa;
+
+    /** The variable shows if we use special mangling with generic target. */
+    std::string m_treatGenericAsSmth;
 
     /** Target system architecture.  (e.g. "x86-64", "x86"). */
     std::string m_arch;
@@ -382,6 +412,9 @@ private:
     
     /** Indicates whether there is an ISA double precision rcp. */
     bool m_hasRcpd;
+
+    /** Indicates whether the target has hardware instruction for vector prefetch. */
+    bool m_hasVecPrefetch;
 };
 
 
@@ -598,6 +631,9 @@ struct Globals {
     /** Indicates that alignment in memory allocation routines should be
         forced to have given value. -1 value means natural alignment for the platforms. */
     int forceAlignment;
+
+    /** When true, flag non-static functions with dllexport attribute on Windows. */
+    bool dllExport;
 };
 
 enum {

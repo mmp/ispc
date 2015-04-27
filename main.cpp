@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2010-2013, Intel Corporation
+  Copyright (c) 2010-2015, Intel Corporation
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -72,6 +72,8 @@ lPrintVersion() {
            "3.5"
 #elif defined(LLVM_3_6)
            "3.6"
+#elif defined(LLVM_3_7)
+           "3.7"
 #else
 #error "Unhandled LLVM version"
 #endif
@@ -120,7 +122,7 @@ usage(int ret) {
     printf("    [--nostdlib]\t\t\tDon't make the ispc standard library available\n");
     printf("    [--nocpp]\t\t\t\tDon't run the C preprocessor\n");
     printf("    [-o <name>/--outfile=<name>]\tOutput filename (may be \"-\" for standard output)\n");
-    printf("    [-O0/-O1]\t\t\t\tSet optimization level (-O1 is default)\n");
+    printf("    [-O0/-O(1/2/3)]\t\t\t\tSet optimization level (off or on). Optimizations are on by default.\n");
     printf("    [--opt=<option>]\t\t\tSet optimization option\n");
     printf("        disable-assertions\t\tRemove assertion statements from final code.\n");
     printf("        disable-fma\t\t\tDisable 'fused multiply-add' instructions (on targets that support them)\n");
@@ -151,6 +153,7 @@ devUsage(int ret) {
     lPrintVersion();
     printf("\nusage (developer options): ispc\n");
     printf("    [--debug]\t\t\t\tPrint information useful for debugging ispc\n");
+    printf("    [--dllexport]\t\t\tMake non-static functions DLL exported.  Windows only.\n");  
     printf("    [--fuzz-test]\t\t\tRandomly perturb program input to test error conditions\n");
     printf("    [--fuzz-seed=<value>]\t\tSeed value for RNG for fuzz testing\n");
     printf("    [--opt=<option>]\t\t\tSet optimization option\n");
@@ -167,7 +170,7 @@ devUsage(int ret) {
     printf("    [--yydebug]\t\t\t\tPrint debugging information during parsing\n");
     printf("    [--debug-phase=<value>]\t\tSet optimization phases to dump. --debug-phase=first,210:220,300,305,310:last\n");
 
-#if !defined(LLVM_3_2) && !defined(LLVM_3_3) // LLVM 3.4+
+#if defined(LLVM_3_4) || defined(LLVM_3_5) // only 3.4 and 3.5
     printf("    [--debug-ir=<value>]\t\tSet optimization phase to generate debugIR after it\n");
 #endif
     printf("    [--off-phase=<value>]\t\tSwitch off optimization phases. --off-phase=first,210:220,300,305,310:last\n");
@@ -321,6 +324,13 @@ int main(int Argc, char *Argv[]) {
     LLVMInitializeARMTargetMC();
 #endif
 
+#ifdef ISPC_NVPTX_ENABLED
+    LLVMInitializeNVPTXTargetInfo();
+    LLVMInitializeNVPTXTarget();
+    LLVMInitializeNVPTXAsmPrinter();
+    LLVMInitializeNVPTXTargetMC();
+#endif /* ISPC_NVPTX_ENABLED */
+
     char *file = NULL;
     const char *headerFileName = NULL;
     const char *outFileName = NULL;
@@ -370,6 +380,8 @@ int main(int Argc, char *Argv[]) {
         }
         else if (!strcmp(argv[i], "--debug"))
             g->debugPrint = true;
+        else if (!strcmp(argv[i], "--dllexport"))
+            g->dllExport = true;
         else if (!strcmp(argv[i], "--instrument"))
             g->emitInstrumentation = true;
         else if (!strcmp(argv[i], "-g")) {
@@ -551,7 +563,7 @@ int main(int Argc, char *Argv[]) {
             g->debug_stages = ParsingPhases(argv[i] + strlen("--debug-phase="));
         }
 
-#if !defined(LLVM_3_2) && !defined(LLVM_3_3) // LLVM 3.4+
+#if defined(LLVM_3_4) || defined(LLVM_3_5) // only 3.4 and 3.5
         else if (strncmp(argv[i], "--debug-ir=", 11) == 0) {
             g->debugIR = ParsingPhaseName(argv[i] + strlen("--debug-ir="));
         }

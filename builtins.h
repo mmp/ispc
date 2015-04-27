@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2010-2013, Intel Corporation
+  Copyright (c) 2010-2015, Intel Corporation
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -56,6 +56,7 @@ void DefineStdlib(SymbolTable *symbolTable, llvm::LLVMContext *ctx, llvm::Module
                   bool includeStdlib);
 
 void AddBitcodeToModule(const unsigned char *bitcode, int length,
-                        llvm::Module *module, SymbolTable *symbolTable = NULL);
+                        llvm::Module *module, SymbolTable *symbolTable = NULL,
+                        bool warn = true);
 
 #endif // ISPC_STDLIB_H

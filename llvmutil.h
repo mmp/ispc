@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2010-2013, Intel Corporation
+  Copyright (c) 2010-2015, Intel Corporation
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -49,6 +49,8 @@
   #include <llvm/IR/DerivedTypes.h>
   #include <llvm/IR/Constants.h>
 #endif
+
+#define PTYPE(p) (llvm::cast<llvm::SequentialType>((p)->getType()->getScalarType())->getElementType())
 
 namespace llvm {
     class PHINode;

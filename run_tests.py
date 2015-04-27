@@ -1,6 +1,6 @@
 #!/usr/bin/python
 #
-#  Copyright (c) 2013, Intel Corporation
+#  Copyright (c) 2013-2015, Intel Corporation
 #  All rights reserved.
 # 
 #  Redistribution and use in source and binary forms, with or without
@@ -165,9 +165,12 @@ def run_test(testname):
         if (options.target == "knc"):
             ispc_cmd = ispc_exe_rel + " --werror --nowrap %s --arch=%s --target=%s" % \
                 (filename, options.arch, "generic-16")
+        elif (options.target == "knl"):
+            ispc_cmd = ispc_exe_rel + " --werror --nowrap %s --arch=%s --target=%s" % \
+                (filename, options.arch, "generic-16")
         else:
             ispc_cmd = ispc_exe_rel + " --werror --nowrap %s --arch=%s --target=%s" % \
-                (filename, options.arch, options.target)
+                (filename, options.arch, options.target) 
         (return_code, output) = run_command(ispc_cmd)
         got_error = (return_code != 0)
 
@@ -194,8 +197,8 @@ def run_test(testname):
 
         # We need to figure out the signature of the test
         # function that this test has.
-        sig2def = { "f_v(" : 0, "f_f(" : 1, "f_fu(" : 2, "f_fi(" : 3, 
-                    "f_du(" : 4, "f_duf(" : 5, "f_di(" : 6 }
+        sig2def = { "f_v(" : 0, "f_f(" : 1, "f_fu(" : 2, "f_fi(" : 3,
+                    "f_du(" : 4, "f_duf(" : 5, "f_di(" : 6, "f_sz" : 7 }
         file = open(filename, 'r')
         match = -1
         for line in file:
@@ -214,6 +217,8 @@ def run_test(testname):
             return (1, 0)
         else:
             global is_generic_target
+            global is_nvptx_target
+            global is_nvptx_nvvm
             if is_windows:
                 if is_generic_target:
                     obj_name = "%s.cpp" % os.path.basename(filename)
@@ -228,6 +233,13 @@ def run_test(testname):
             else:
                 if is_generic_target:
                     obj_name = "%s.cpp" % testname
+                elif is_nvptx_target:
+                  if os.environ.get("NVVM") == "1":
+                    is_nvptx_nvvm = True
+                    obj_name = "%s.ll" % testname
+                  else:
+                    obj_name = "%s.ptx" % testname
+                    is_nvptx_nvvm = False
                 else:
                     obj_name = "%s.o" % testname
                 exe_name = "%s.run" % testname
@@ -255,6 +267,9 @@ def run_test(testname):
                 if (options.target == "knc"):
                     cc_cmd = "%s -O2 -I. %s %s test_static.cpp -DTEST_SIG=%d %s -o %s" % \
                          (options.compiler_exe, gcc_arch, "-mmic", match, obj_name, exe_name)
+                elif (options.target == "knl"):
+                    cc_cmd = "%s -O2 -I. %s %s test_static.cpp -DTEST_SIG=%d %s -o %s" % \
+                         (options.compiler_exe, gcc_arch, "-xMIC-AVX512", match, obj_name, exe_name)
                 else:
                     cc_cmd = "%s -O2 -I. %s %s test_static.cpp -DTEST_SIG=%d %s -o %s" % \
                          (options.compiler_exe, gcc_arch, gcc_isa, match, obj_name, exe_name)                    
@@ -263,24 +278,57 @@ def run_test(testname):
                     cc_cmd += ' -Wl,-no_pie'
                 if should_fail:
                     cc_cmd += " -DEXPECT_FAILURE"
+
+                if is_nvptx_target:
+                  nvptxcc_exe = "ptxtools/runtest_ptxcc.sh"
+                  nvptxcc_exe_rel = add_prefix(nvptxcc_exe)
+                  cc_cmd = "%s %s -DTEST_SIG=%d -o %s" % \
+                      (nvptxcc_exe_rel, obj_name, match, exe_name)
+
+            ispc_cmd = ispc_exe_rel + " --woff %s -o %s -O3 --arch=%s --target=%s" % \
+                       (filename, obj_name, options.arch, options.target)
+
             if (options.target == "knc"):
+                ispc_cmd = ispc_exe_rel + " --woff %s -o %s --arch=%s --target=%s" % \
+                           (filename, obj_name, options.arch, "generic-16")
+            elif (options.target == "knl"):
                 ispc_cmd = ispc_exe_rel + " --woff %s -o %s --arch=%s --target=%s" % \
                            (filename, obj_name, options.arch, "generic-16")
             else:
                 ispc_cmd = ispc_exe_rel + " --woff %s -o %s --arch=%s --target=%s" % \
                            (filename, obj_name, options.arch, options.target)
+
             if options.no_opt:
                 ispc_cmd += " -O0" 
             if is_generic_target:
                 ispc_cmd += " --emit-c++ --c++-include-file=%s" % add_prefix(options.include_file)
-             
+
+            if is_nvptx_target:
+                filename4ptx = "/tmp/"+os.path.basename(filename)+".parsed.ispc"
+#                grep_cmd = "grep -v 'export uniform int width' %s > %s " % \
+                grep_cmd = "sed  's/export\ uniform\ int\ width/static uniform\ int\ width/g' %s > %s" % \
+                    (filename, filename4ptx)
+                if options.verbose:
+                  print "Grepping: %s" % grep_cmd
+                sp = subprocess.Popen(grep_cmd, shell=True)
+                sp.communicate()
+                if is_nvptx_nvvm:
+                  ispc_cmd = ispc_exe_rel + " --woff %s -o %s -O3 --emit-llvm --target=%s" % \
+                         (filename4ptx, obj_name, options.target)
+                else:
+                  ispc_cmd = ispc_exe_rel + " --woff %s -o %s -O3 --emit-asm --target=%s" % \
+                         (filename4ptx, obj_name, options.target)
+
         # compile the ispc code, make the executable, and run it...
+        ispc_cmd += " -h " + filename + ".h"
+        cc_cmd += " -DTEST_HEADER=<" + filename + ".h>"
         (compile_error, run_error) = run_cmds([ispc_cmd, cc_cmd], 
                                               options.wrapexe + " " + exe_name, \
                                               testname, should_fail)
 
         # clean up after running the test
         try:
+            os.unlink(filename + ".h")
             if not options.save_bin:
                 if not run_error:
                     os.unlink(exe_name)
@@ -309,8 +357,10 @@ def run_tasks_from_queue(queue, queue_ret, queue_error, queue_finish, total_test
     ispc_exe = glob_var[3]
     global is_generic_target
     is_generic_target = glob_var[4]
+    global is_nvptx_target
+    is_nvptx_target = glob_var[5]
     global run_tests_log
-    run_tests_log = glob_var[5]    
+    run_tests_log = glob_var[6]
 
     if is_windows:
         tmpdir = "tmp%d" % os.getpid()
@@ -500,12 +550,12 @@ def verify():
     f_lines = f.readlines()
     f.close()
     check = [["g++", "clang++", "cl"],["-O0", "-O2"],["x86","x86-64"],
-             ["Linux","Windows","Mac"],["LLVM 3.2","LLVM 3.3","LLVM 3.4","LLVM 3.5","LLVM trunk"],
+             ["Linux","Windows","Mac"],["LLVM 3.2","LLVM 3.3","LLVM 3.4","LLVM 3.5","LLVM 3.6","LLVM trunk"],
              ["sse2-i32x4", "sse2-i32x8", "sse4-i32x4", "sse4-i32x8", "sse4-i16x8",
               "sse4-i8x16", "avx1-i32x4" "avx1-i32x8", "avx1-i32x16", "avx1-i64x4", "avx1.1-i32x8",
               "avx1.1-i32x16", "avx1.1-i64x4", "avx2-i32x8", "avx2-i32x16", "avx2-i64x4",
               "generic-1", "generic-4", "generic-8",
-              "generic-16", "generic-32", "generic-64", "knc"]]
+              "generic-16", "generic-32", "generic-64", "knc", "knl"]]
     for i in range (0,len(f_lines)):
         if f_lines[i][0] == "%":
             continue
@@ -551,6 +601,8 @@ def run_tests(options1, args, print_version):
  
     if options.target == 'neon':
         options.arch = 'arm'
+    if options.target == "nvptx":
+        options.arch = "nvptx64"
  
     # use relative path to not depend on host directory, which may possibly
     # have white spaces and unicode characters.
@@ -579,7 +631,11 @@ def run_tests(options1, args, print_version):
     global is_generic_target 
     is_generic_target = ((options.target.find("generic-") != -1 and
                      options.target != "generic-1" and options.target != "generic-x1") or 
-                     options.target == "knc")
+                     options.target == "knc" or options.target == "knl")
+
+    global is_nvptx_target
+    is_nvptx_target = (options.target.find("nvptx") != -1)
+
     if is_generic_target and options.include_file == None:
         if options.target == "generic-4" or options.target == "generic-x4":
             error("No generics #include specified; using examples/intrinsics/sse4.h\n", 2)
@@ -601,11 +657,16 @@ def run_tests(options1, args, print_version):
             options.include_file = "examples/intrinsics/generic-64.h"
             options.target = "generic-64"
         elif options.target == "knc":
-            error("No knc #include specified; using examples/intrinsics/knc-i1x16.h\n", 2)
-            options.include_file = "examples/intrinsics/knc-i1x16.h"
+            error("No knc #include specified; using examples/intrinsics/knc.h\n", 2)
+            options.include_file = "examples/intrinsics/knc.h"
+        elif options.target == "knl":
+            error("No knl #include specified; using examples/intrinsics/knl.h\n", 2)
+            options.include_file = "examples/intrinsics/knl.h"
  
     if options.compiler_exe == None:
         if (options.target == "knc"): 
+            options.compiler_exe = "icpc"
+        elif (options.target == "knl"): 
             options.compiler_exe = "icpc"
         elif is_windows:
             options.compiler_exe = "cl.exe"
@@ -652,7 +713,7 @@ def run_tests(options1, args, print_version):
                 OS = "Linux"
 
         if not (OS  == 'Linux'):
-            error ("knc target supported only on Linux", 1)
+            error ("knc target is supported only on Linux", 1)
     # if no specific test files are specified, run all of the tests in tests/,
     # failing_tests/, and tests_errors/
     if len(args) == 0:
@@ -723,7 +784,7 @@ def run_tests(options1, args, print_version):
 
     start_time = time.time()
     # launch jobs to run tests
-    glob_var = [is_windows, options, s, ispc_exe, is_generic_target, run_tests_log]
+    glob_var = [is_windows, options, s, ispc_exe, is_generic_target, is_nvptx_target, run_tests_log]
     global task_threads
     task_threads = [0] * nthreads
     for x in range(nthreads):
@@ -843,11 +904,12 @@ if __name__ == "__main__":
     parser.add_option("-f", "--ispc-flags", dest="ispc_flags", help="Additional flags for ispc (-g, -O1, ...)",
                   default="")
     parser.add_option('-t', '--target', dest='target',
-                  help='Set compilation target (sse2-i32x4, sse2-i32x8, sse4-i32x4, sse4-i32x8, sse4-i16x8, sse4-i8x16, avx1-i32x8, avx1-i32x16, avx1.1-i32x8, avx1.1-i32x16, avx2-i32x8, avx2-i32x16, generic-x1, generic-x4, generic-x8, generic-x16, generic-x32, generic-x64, knc)',
-                                    default="sse4")
+                  help=('Set compilation target (sse2-i32x4, sse2-i32x8, sse4-i32x4, sse4-i32x8, ' +
+                  'sse4-i16x8, sse4-i8x16, avx1-i32x8, avx1-i32x16, avx1.1-i32x8, avx1.1-i32x16, ' +
+                  'avx2-i32x8, avx2-i32x16, generic-x1, generic-x4, generic-x8, generic-x16, ' + 
+                  'generic-x32, generic-x64, knc, knl)'), default="sse4")
     parser.add_option('-a', '--arch', dest='arch',
-                  help='Set architecture (arm, x86, x86-64)',
-                                    default="x86-64")
+                  help='Set architecture (arm, x86, x86-64)',default="x86-64")
     parser.add_option("-c", "--compiler", dest="compiler_exe", help="C/C++ compiler binary to use to run tests",
                   default=None)
     parser.add_option('-o', '--no-opt', dest='no_opt', help='Disable optimization',

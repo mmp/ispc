@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2011-2013, Intel Corporation
+  Copyright (c) 2011-2015, Intel Corporation
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -475,6 +475,20 @@ lCheckAllOffSafety(ASTNode *node, void *data) {
     if (dynamic_cast<PtrDerefExpr *>(node) != NULL) {
         *okPtr = false;
         return false;
+    }
+
+    /*
+      Don't allow turning if/else to straight-line-code if we 
+      assign to a uniform.
+    */
+    AssignExpr *ae;
+    if ((ae = dynamic_cast<AssignExpr *>(node)) != NULL) {
+      if (ae->GetType()) {
+        if (ae->GetType()->IsUniformType()) {
+          *okPtr = false;
+          return false;
+        }
+      }
     }
 
     return true;

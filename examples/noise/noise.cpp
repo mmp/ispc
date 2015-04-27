@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2010-2011, Intel Corporation
+  Copyright (c) 2010-2014, Intel Corporation
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -38,6 +38,7 @@
 #pragma warning (disable: 4305)
 #endif
 
+#include <cstdlib>
 #include <stdio.h>
 #include <algorithm>
 #include "../timing.h"
@@ -94,7 +95,7 @@ int main(int argc, char *argv[]) {
     // time of three runs.
     //
     double minISPC = 1e30;
-    for (int i = 0; i < test_iterations[0]; ++i) {
+    for (unsigned int i = 0; i < test_iterations[0]; ++i) {
         reset_and_start_timer();
         noise_ispc(x0, y0, x1, y1, width, height, buf);
         double dt = get_elapsed_mcycles();
@@ -114,7 +115,7 @@ int main(int argc, char *argv[]) {
     // minimum time.
     //
     double minSerial = 1e30;
-    for (int i = 0; i < test_iterations[1]; ++i) {
+    for (unsigned int i = 0; i < test_iterations[1]; ++i) {
         reset_and_start_timer();
         noise_serial(x0, y0, x1, y1, width, height, buf);
         double dt = get_elapsed_mcycles();

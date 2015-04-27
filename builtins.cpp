@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2010-2014, Intel Corporation
+  Copyright (c) 2010-2015, Intel Corporation
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -342,11 +342,17 @@ lSetInternalFunctions(llvm::Module *module) {
         "__all",
         "__any",
         "__aos_to_soa3_float",
+//#ifdef ISPC_NVPTX_ENABLED
+        "__aos_to_soa3_float1",
+//#endif /* ISPC_NVPTX_ENABLED */
         "__aos_to_soa3_float16",
         "__aos_to_soa3_float4",
         "__aos_to_soa3_float8",
         "__aos_to_soa3_int32",
         "__aos_to_soa4_float",
+//#ifdef ISPC_NVPTX_ENABLED
+        "__aos_to_soa4_float1",
+//#endif /* ISPC_NVPTX_ENABLED */
         "__aos_to_soa4_float16",
         "__aos_to_soa4_float4",
         "__aos_to_soa4_float8",
@@ -395,6 +401,38 @@ lSetInternalFunctions(llvm::Module *module) {
         "__atomic_xor_int64_global",
         "__atomic_xor_uniform_int32_global",
         "__atomic_xor_uniform_int64_global",
+//#ifdef ISPC_NVPTX_ENABLED
+        "__atomic_add_varying_int32_global",
+        "__atomic_add_varying_int64_global",
+        "__atomic_and_varying_int32_global",
+        "__atomic_and_varying_int64_global",
+        "__atomic_compare_exchange_varying_double_global",
+        "__atomic_compare_exchange_varying_float_global",
+        "__atomic_compare_exchange_varying_int32_global",
+        "__atomic_compare_exchange_varying_int64_global",
+        "__atomic_max_varying_int32_global",
+        "__atomic_max_varying_int64_global",
+        "__atomic_min_varying_int32_global",
+        "__atomic_min_varying_int64_global",
+        "__atomic_or_varying_int32_global",
+        "__atomic_or_varying_int64_global",
+        "__atomic_sub_varying_int32_global",
+        "__atomic_sub_varying_int64_global",
+        "__atomic_swap_varying_double_global",
+        "__atomic_swap_varying_float_global",
+        "__atomic_swap_varying_int32_global",
+        "__atomic_swap_varying_int64_global",
+        "__atomic_umax_varying_uint32_global",
+        "__atomic_umax_varying_uint64_global",
+        "__atomic_umin_varying_uint32_global",
+        "__atomic_umin_varying_uint64_global",
+        "__atomic_xor_uniform_int32_global",
+        "__atomic_xor_uniform_int64_global",
+        "__atomic_xor_varying_int32_global",
+        "__atomic_xor_varying_int64_global",
+        "__atomic_xor_varying_int32_global",
+        "__atomic_xor_varying_int64_global",
+//#endif /* ISPC_NVPTX_ENABLED */
         "__broadcast_double",
         "__broadcast_float",
         "__broadcast_i16",
@@ -421,6 +459,9 @@ lSetInternalFunctions(llvm::Module *module) {
         "__do_assert_uniform",
         "__do_assert_varying",
         "__do_print",
+//#ifdef ISPC_NVPTX_ENABLED
+        "__do_print_nvptx",
+//#endif /* ISPC_NVPTX_ENABLED */
         "__doublebits_uniform_int64",
         "__doublebits_varying_int64",
         "__exclusive_scan_add_double",
@@ -435,6 +476,10 @@ lSetInternalFunctions(llvm::Module *module) {
         "__extract_int32",
         "__extract_int64",
         "__extract_int8",
+//#ifdef ISPC_NVPTX_ENABLED
+        "__extract_float",
+        "__extract_double",
+//#endif /* ISPC_NVPTX_ENABLED */
         "__fastmath",
         "__float_to_half_uniform",
         "__float_to_half_varying",
@@ -451,6 +496,10 @@ lSetInternalFunctions(llvm::Module *module) {
         "__insert_int32",
         "__insert_int64",
         "__insert_int8",
+//#ifdef ISPC_NVPTX_ENABLED
+        "__insert_float",
+        "__insert_double",
+//#endif /* ISPC_NVPTX_ENABLED */
         "__intbits_uniform_double",
         "__intbits_uniform_float",
         "__intbits_varying_double",
@@ -487,6 +536,9 @@ lSetInternalFunctions(llvm::Module *module) {
         "__min_varying_uint32",
         "__min_varying_uint64",
         "__movmsk",
+//#ifdef ISPC_NVPTX_ENABLED
+        "__movmsk_ptx",
+//#endif /* ISPC_NVPTX_ENABLED */
         "__new_uniform_32rt",
         "__new_uniform_64rt",
         "__new_varying32_32rt",
@@ -507,6 +559,10 @@ lSetInternalFunctions(llvm::Module *module) {
         "__prefetch_read_uniform_2",
         "__prefetch_read_uniform_3",
         "__prefetch_read_uniform_nt",
+        "__pseudo_prefetch_read_varying_1",
+        "__pseudo_prefetch_read_varying_2",
+        "__pseudo_prefetch_read_varying_3",
+        "__pseudo_prefetch_read_varying_nt",
         "__psubs_vi8",
         "__psubs_vi16",
         "__psubus_vi8",
@@ -581,6 +637,10 @@ lSetInternalFunctions(llvm::Module *module) {
         "__soa_to_aos3_float8",
         "__soa_to_aos3_int32",
         "__soa_to_aos4_float",
+//#ifdef ISPC_NVPTX_ENABLED
+        "__soa_to_aos3_float1",
+        "__soa_to_aos4_float1",
+//#endif /* ISPC_NVPTX_ENABLED */
         "__soa_to_aos4_float16",
         "__soa_to_aos4_float4",
         "__soa_to_aos4_float8",
@@ -681,6 +741,26 @@ lSetInternalFunctions(llvm::Module *module) {
         "__vec4_add_float",
         "__vec4_add_int32",
         "__vselect_float",
+//#ifdef ISPC_NVPTX_ENABLED
+        "__program_index",
+        "__program_count",
+        "__warp_index",
+        "__task_index0",
+        "__task_index1",
+        "__task_index2",
+        "__task_index",
+        "__task_count0",
+        "__task_count1",
+        "__task_count2",
+        "__task_count",
+        "__cvt_loc2gen",
+        "__cvt_loc2gen_var",
+        "__cvt_const2gen",
+        "__puts_nvptx",
+        "ISPCAlloc",
+        "ISPCLaunch",
+        "ISPCSync",
+//#endif /* ISPC_NVPTX_ENABLED */
         "__vselect_i32"
     };
 
@@ -706,9 +786,13 @@ lSetInternalFunctions(llvm::Module *module) {
  */
 void
 AddBitcodeToModule(const unsigned char *bitcode, int length,
-                   llvm::Module *module, SymbolTable *symbolTable) {
+                   llvm::Module *module, SymbolTable *symbolTable, bool warn) {
     llvm::StringRef sb = llvm::StringRef((char *)bitcode, length);
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5)
     llvm::MemoryBuffer *bcBuf = llvm::MemoryBuffer::getMemBuffer(sb);
+#else // LLVM 3.6+
+    llvm::MemoryBufferRef bcBuf = llvm::MemoryBuffer::getMemBuffer(sb)->getMemBufferRef();
+#endif
 
 #if !defined(LLVM_3_2) && !defined(LLVM_3_3) && !defined(LLVM_3_4) // LLVM 3.5+
     llvm::ErrorOr<llvm::Module *> ModuleOrErr = llvm::parseBitcodeFile(bcBuf, *g->ctx);
@@ -755,6 +839,9 @@ AddBitcodeToModule(const unsigned char *bitcode, int length,
             g->target->getISA() != Target::NEON16 &&
             g->target->getISA() != Target::NEON8)
 #endif // !__arm__
+#ifdef ISPC_NVPTX_ENABLED
+        if (g->target->getISA() != Target::NVPTX)
+#endif /* ISPC_NVPTX_ENABLED */
         {
             Assert(bcTriple.getArch() == llvm::Triple::UnknownArch ||
                    mTriple.getArch() == bcTriple.getArch());
@@ -769,7 +856,8 @@ AddBitcodeToModule(const unsigned char *bitcode, int length,
             // DataLayout or library DataLayout to be empty.
 #if !defined(LLVM_3_2) && !defined(LLVM_3_3) && !defined(LLVM_3_4) // LLVM 3.5+
             if (!VerifyDataLayoutCompatibility(module->getDataLayoutStr(),
-                                               bcModule->getDataLayoutStr())) {
+                                               bcModule->getDataLayoutStr())
+                && warn) {
               Warning(SourcePos(), "Module DataLayout is incompatible with "
                       "library DataLayout:\n"
                       "Module  DL: %s\n"
@@ -779,7 +867,8 @@ AddBitcodeToModule(const unsigned char *bitcode, int length,
             }
 #else
             if (!VerifyDataLayoutCompatibility(module->getDataLayout(),
-                                               bcModule->getDataLayout())) {
+                                               bcModule->getDataLayout())
+                && warn) {
               Warning(SourcePos(), "Module DataLayout is incompatible with "
                       "library DataLayout:\n"
                       "Module  DL: %s\n"
@@ -794,10 +883,14 @@ AddBitcodeToModule(const unsigned char *bitcode, int length,
         bcModule->setDataLayout(module->getDataLayout());
 
         std::string(linkError);
-        if (llvm::Linker::LinkModules(module, bcModule,
-                                      llvm::Linker::DestroySource,
+        if (llvm::Linker::LinkModules(module, bcModule
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) 
+                                      , llvm::Linker::DestroySource,
                                       &linkError))
             Error(SourcePos(), "Error linking stdlib bitcode: %s", linkError.c_str());
+#else // LLVM 3.6+
+            )) {}
+#endif
         lSetInternalFunctions(module);
         if (symbolTable != NULL)
             lAddModuleSymbols(module, symbolTable);
@@ -828,20 +921,59 @@ lDefineConstantInt(const char *name, int val, llvm::Module *module,
     symbolTable->AddVariable(sym);
 
     if (m->diBuilder != NULL) {
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
         llvm::DIFile file;
         llvm::DIType diType = sym->type->GetDIType(file);
         Assert(diType.Verify());
+#else // LLVM 3.7+
+        llvm::MDFile *file =
+            m->diBuilder->createFile(m->diCompileUnit->getFilename(),
+                                     m->diCompileUnit->getDirectory());
+        llvm::MDType *diType = sym->type->GetDIType(file);
+//        Assert(diType.Verify());
+#endif
         // FIXME? DWARF says that this (and programIndex below) should
         // have the DW_AT_artifical attribute.  It's not clear if this
         // matters for anything though.
-        llvm::DIGlobalVariable var =
-            m->diBuilder->createGlobalVariable(name,
+
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5)
+        llvm::DIGlobalVariable var = m->diBuilder->createGlobalVariable(
+                                               name,
                                                file,
                                                0 /* line */,
                                                diType,
                                                true /* static */,
                                                sym->storagePtr);
+#elif defined(LLVM_3_6)
+        llvm::Constant *sym_const_storagePtr = llvm::dyn_cast<llvm::Constant>(sym->storagePtr);
+        Assert(sym_const_storagePtr);
+        llvm::DIGlobalVariable var = m->diBuilder->createGlobalVariable(
+                                               file,
+                                               name,
+                                               name,
+                                               file,
+                                               0 /* line */,
+                                               diType,
+                                               true /* static */,
+                                               sym_const_storagePtr);
+#else // LLVM 3.7+
+    llvm::Constant *sym_const_storagePtr = llvm::dyn_cast<llvm::Constant>(sym->storagePtr);
+    Assert(sym_const_storagePtr);
+    m->diBuilder->createGlobalVariable(
+              file,
+              name,
+              name,
+              file,
+              0 /* line */,
+              diType,
+              true /* static */,
+              sym_const_storagePtr);
+#endif
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
         Assert(var.Verify());
+#else // LLVM 3.7+
+    //comming soon
+#endif
     }
 }
 
@@ -891,17 +1023,55 @@ lDefineProgramIndex(llvm::Module *module, SymbolTable *symbolTable) {
     symbolTable->AddVariable(sym);
 
     if (m->diBuilder != NULL) {
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
         llvm::DIFile file;
         llvm::DIType diType = sym->type->GetDIType(file);
         Assert(diType.Verify());
-        llvm::DIGlobalVariable var =
-            m->diBuilder->createGlobalVariable(sym->name.c_str(),
+#else // LLVM 3.7+
+        llvm::MDFile *file =
+            m->diBuilder->createFile(m->diCompileUnit->getFilename(),
+                                     m->diCompileUnit->getDirectory());
+        llvm::MDType *diType = sym->type->GetDIType(file);
+//        Assert(diType.Verify());
+#endif
+#if defined(LLVM_3_6)// LLVM 3.6+
+        llvm::Constant *sym_const_storagePtr = llvm::dyn_cast<llvm::Constant>(sym->storagePtr);
+        Assert(sym_const_storagePtr);
+        llvm::DIGlobalVariable var = m->diBuilder->createGlobalVariable(
+                                               file,
+                                               sym->name.c_str(),
+                                               sym->name.c_str(),
+                                               file,
+                                               0 /* line */,
+                                               diType,
+                                               false /* static */,
+                                               sym_const_storagePtr);
+#elif defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5)
+        llvm::DIGlobalVariable var = m->diBuilder->createGlobalVariable(
+                                               sym->name.c_str(),
                                                file,
                                                0 /* line */,
                                                diType,
                                                false /* static */,
                                                sym->storagePtr);
+#else
+        llvm::Constant *sym_const_storagePtr = llvm::dyn_cast<llvm::Constant>(sym->storagePtr);
+        Assert(sym_const_storagePtr);
+        m->diBuilder->createGlobalVariable(
+                                               file,
+                                               sym->name.c_str(),
+                                               sym->name.c_str(),
+                                               file,
+                                               0 /* line */,
+                                               diType,
+                                               false /* static */,
+                                               sym_const_storagePtr);
+#endif    
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
         Assert(var.Verify());
+#else // LLVM 3.7+
+    //comming soon
+#endif
     }
 }
 
@@ -910,24 +1080,48 @@ void
 DefineStdlib(SymbolTable *symbolTable, llvm::LLVMContext *ctx, llvm::Module *module,
              bool includeStdlibISPC) {
     bool runtime32 = g->target->is32Bit();
+    bool warn = g->target->getISA() != Target::GENERIC;
+
+#define EXPORT_MODULE_COND_WARN(export_module, warnings)        \
+    extern unsigned char export_module[];                       \
+    extern int export_module##_length;                          \
+    AddBitcodeToModule(export_module, export_module##_length,   \
+                       module, symbolTable, warnings);
 
 #define EXPORT_MODULE(export_module)                            \
     extern unsigned char export_module[];                       \
     extern int export_module##_length;                          \
     AddBitcodeToModule(export_module, export_module##_length,   \
-                       module, symbolTable);
+                       module, symbolTable, true);
 
-    // Add the definitions from the compiled builtins-c.c file
+    // Add the definitions from the compiled builtins.c file.
+    // When compiling for "generic" target family, data layout warnings for
+    // "builtins_bitcode_c" have to be switched off: its DL is incompatible
+    // with the DL of "generic". Anyway, AddBitcodeToModule() corrects this
+    // automatically if DLs differ (by copying module`s DL to export`s DL).
     if (runtime32) {
-        EXPORT_MODULE(builtins_bitcode_c_32);
+        EXPORT_MODULE_COND_WARN(builtins_bitcode_c_32, warn);
     }
     else {
-        EXPORT_MODULE(builtins_bitcode_c_64);
+        EXPORT_MODULE_COND_WARN(builtins_bitcode_c_64, warn);
     }
 
     // Next, add the target's custom implementations of the various needed
     // builtin functions (e.g. __masked_store_32(), etc).
     switch (g->target->getISA()) {
+#ifdef ISPC_NVPTX_ENABLED
+    case Target::NVPTX: 
+      {
+        if (runtime32) {
+            fprintf(stderr, "Unfortunatly 32bit targets are not supported at the moment .. \n");
+            assert(0);
+        }
+        else {
+            EXPORT_MODULE(builtins_bitcode_nvptx_64bit);
+        }
+        break;
+      };
+#endif /* ISPC_NVPTX_ENABLED */
 
 #ifdef ISPC_ARM_ENABLED
     case Target::NEON8: {
@@ -1213,7 +1407,18 @@ DefineStdlib(SymbolTable *symbolTable, llvm::LLVMContext *ctx, llvm::Module *mod
     }
 
     // define the 'programCount' builtin variable
-    lDefineConstantInt("programCount", g->target->getVectorWidth(), module, symbolTable);
+#ifdef ISPC_NVPTX_ENABLED
+    if (g->target->getISA() == Target::NVPTX)
+    {
+      lDefineConstantInt("programCount", 32, module, symbolTable);
+    }
+    else
+    {
+#endif /* ISPC_NVPTX_ENABLED */
+      lDefineConstantInt("programCount", g->target->getVectorWidth(), module, symbolTable);
+#ifdef ISPC_NVPTX_ENABLED
+    }
+#endif /* ISPC_NVPTX_ENABLED */
 
     // define the 'programIndex' builtin
     lDefineProgramIndex(module, symbolTable);
@@ -1244,6 +1449,13 @@ DefineStdlib(SymbolTable *symbolTable, llvm::LLVMContext *ctx, llvm::Module *mod
                        module, symbolTable);
     lDefineConstantInt("__have_native_rcpd", g->target->hasRcpd(),
                        module, symbolTable);
+
+#ifdef ISPC_NVPTX_ENABLED
+    lDefineConstantInt("__is_nvptx_target", (int)(g->target->getISA() == Target::NVPTX),
+                       module, symbolTable);
+#else
+    lDefineConstantInt("__is_nvptx_target", (int)0, module, symbolTable);
+#endif /* ISPC_NVPTX_ENABLED */
 
     if (g->forceAlignment != -1) {
         llvm::GlobalVariable *alignment = module->getGlobalVariable("memory_alignment", true);

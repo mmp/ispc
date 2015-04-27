@@ -1,4 +1,4 @@
-;;  Copyright (c) 2010-2014, Intel Corporation
+;;  Copyright (c) 2010-2015, Intel Corporation
 ;;  All rights reserved.
 ;;
 ;;  Redistribution and use in source and binary forms, with or without
@@ -46,6 +46,17 @@ define(`MASK_HIGH_BIT_ON',
 `ifelse(WIDTH, `64', `-9223372036854775808',
         WIDTH, `32', `2147483648',
                      `eval(1<<(WIDTH-1))')')
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; LLVM has different IR for different versions since 3.7
+
+define(`PTR_OP_ARGS',
+  ifelse(LLVM_VERSION, LLVM_3_7,
+    ``$1 , $1 *'',
+    ``$1 *''
+  )
+)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1193,34 +1204,34 @@ forloop(i, 1, eval(WIDTH-1), `  %ret_`'i = insertelement <WIDTH x $1> %ret_`'eva
 not_const:
   ; store two instances of the vector into memory
   %ptr = alloca <WIDTH x $1>, i32 2
-  %ptr0 = getelementptr <WIDTH x $1> * %ptr, i32 0
+  %ptr0 = getelementptr PTR_OP_ARGS(`<WIDTH x $1>') %ptr, i32 0
   store <WIDTH x $1> %0, <WIDTH x $1> * %ptr0
-  %ptr1 = getelementptr <WIDTH x $1> * %ptr, i32 1
+  %ptr1 = getelementptr PTR_OP_ARGS(`<WIDTH x $1>') %ptr, i32 1
   store <WIDTH x $1> %0, <WIDTH x $1> * %ptr1
 
   ; compute offset in [0,vectorwidth-1], then index into the doubled-up vector
   %offset = and i32 %1, eval(WIDTH-1)
   %ptr_as_elt_array = bitcast <WIDTH x $1> * %ptr to [eval(2*WIDTH) x $1] *
-  %load_ptr = getelementptr [eval(2*WIDTH) x $1] * %ptr_as_elt_array, i32 0, i32 %offset
+  %load_ptr = getelementptr PTR_OP_ARGS(`[eval(2*WIDTH) x $1]') %ptr_as_elt_array, i32 0, i32 %offset
   %load_ptr_vec = bitcast $1 * %load_ptr to <WIDTH x $1> *
-  %result = load <WIDTH x $1> * %load_ptr_vec, align $2
+  %result = load PTR_OP_ARGS(`<WIDTH x $1> ')  %load_ptr_vec, align $2
   ret <WIDTH x $1> %result
 }
 
 define <WIDTH x $1> @__shift_$1(<WIDTH x $1>, i32) nounwind readnone alwaysinline {
   %ptr = alloca <WIDTH x $1>, i32 3
-  %ptr0 = getelementptr <WIDTH x $1> * %ptr, i32 0
+  %ptr0 = getelementptr PTR_OP_ARGS(`<WIDTH x $1>') %ptr, i32 0
   store <WIDTH x $1> zeroinitializer, <WIDTH x $1> * %ptr0
-  %ptr1 = getelementptr <WIDTH x $1> * %ptr, i32 1
+  %ptr1 = getelementptr PTR_OP_ARGS(`<WIDTH x $1>') %ptr, i32 1
   store <WIDTH x $1> %0, <WIDTH x $1> * %ptr1
-  %ptr2 = getelementptr <WIDTH x $1> * %ptr, i32 2
+  %ptr2 = getelementptr PTR_OP_ARGS(`<WIDTH x $1>') %ptr, i32 2
   store <WIDTH x $1> zeroinitializer, <WIDTH x $1> * %ptr2
 
   %offset = add i32 %1, WIDTH
   %ptr_as_elt_array = bitcast <WIDTH x $1> * %ptr to [eval(3*WIDTH) x $1] *
-  %load_ptr = getelementptr [eval(3*WIDTH) x $1] * %ptr_as_elt_array, i32 0, i32 %offset
+  %load_ptr = getelementptr PTR_OP_ARGS(`[eval(3*WIDTH) x $1]') %ptr_as_elt_array, i32 0, i32 %offset
   %load_ptr_vec = bitcast $1 * %load_ptr to <WIDTH x $1> *
-  %result = load <WIDTH x $1> * %load_ptr_vec, align $2
+  %result = load PTR_OP_ARGS(`<WIDTH x $1> ')  %load_ptr_vec, align $2
   ret <WIDTH x $1> %result
 }
 
@@ -1265,13 +1276,13 @@ not_const:
   store <eval(2*WIDTH) x $1> %v2, <eval(2*WIDTH) x $1> * %ptr
   %baseptr = bitcast <eval(2*WIDTH) x $1> * %ptr to $1 *
 
-  %ptr_0 = getelementptr $1 * %baseptr, i32 %index_0
-  %val_0 = load $1 * %ptr_0
+  %ptr_0 = getelementptr PTR_OP_ARGS(`$1') %baseptr, i32 %index_0
+  %val_0 = load PTR_OP_ARGS(`$1 ')  %ptr_0
   %result_0 = insertelement <WIDTH x $1> undef, $1 %val_0, i32 0
 
 forloop(i, 1, eval(WIDTH-1), `  
-  %ptr_`'i = getelementptr $1 * %baseptr, i32 %index_`'i
-  %val_`'i = load $1 * %ptr_`'i
+  %ptr_`'i = getelementptr PTR_OP_ARGS(`$1') %baseptr, i32 %index_`'i
+  %val_`'i = load PTR_OP_ARGS(`$1 ')  %ptr_`'i
   %result_`'i = insertelement <WIDTH x $1> %result_`'eval(i-1), $1 %val_`'i, i32 i
 ')
 
@@ -1498,30 +1509,36 @@ define <$1 x $2> @__atomic_compare_exchange_$3_global($2* %ptr, <$1 x $2> %cmp,
    %cmp_LANE_ID = extractelement <$1 x $2> %cmp, i32 LANE
    %val_LANE_ID = extractelement <$1 x $2> %val, i32 LANE
 
-  ;; 3.5 and 3.6 code is the same since m4 has no OR and AND operators
+  ;; 3.5, 3.6 and 3.7 code is the same since m4 has no OR and AND operators
   ifelse(LLVM_VERSION,LLVM_3_5,`
     %r_LANE_ID_t = cmpxchg $2 * %ptr, $2 %cmp_LANE_ID, $2 %val_LANE_ID seq_cst seq_cst
     %r_LANE_ID = extractvalue { $2, i1 } %r_LANE_ID_t, 0
-  ',LLVM_VERSION,LLVM_3_6,` 
+  ',LLVM_VERSION,LLVM_3_6,`
+    %r_LANE_ID_t = cmpxchg $2 * %ptr, $2 %cmp_LANE_ID, $2 %val_LANE_ID seq_cst seq_cst
+    %r_LANE_ID = extractvalue { $2, i1 } %r_LANE_ID_t, 0
+  ',LLVM_VERSION,LLVM_3_7,`
     %r_LANE_ID_t = cmpxchg $2 * %ptr, $2 %cmp_LANE_ID, $2 %val_LANE_ID seq_cst seq_cst
     %r_LANE_ID = extractvalue { $2, i1 } %r_LANE_ID_t, 0
   ',`
     %r_LANE_ID = cmpxchg $2 * %ptr, $2 %cmp_LANE_ID, $2 %val_LANE_ID seq_cst
   ')
-   %rp_LANE_ID = getelementptr $2 * %rptr32, i32 LANE
+   %rp_LANE_ID = getelementptr PTR_OP_ARGS(`$2') %rptr32, i32 LANE
    store $2 %r_LANE_ID, $2 * %rp_LANE_ID')
 
-  %r = load <$1 x $2> * %rptr
+  %r = load PTR_OP_ARGS(`<$1 x $2> ')  %rptr
   ret <$1 x $2> %r
 }
 
 define $2 @__atomic_compare_exchange_uniform_$3_global($2* %ptr, $2 %cmp,
                                                        $2 %val) nounwind alwaysinline {                                                           
-  ;; 3.5 and 3.6 code is the same since m4 has no OR and AND operators
+  ;; 3.5, 3.6 and 3.7 code is the same since m4 has no OR and AND operators
   ifelse(LLVM_VERSION,LLVM_3_5,`
    %r_t = cmpxchg $2 * %ptr, $2 %cmp, $2 %val seq_cst seq_cst
    %r = extractvalue { $2, i1 } %r_t, 0
   ',LLVM_VERSION,LLVM_3_6,`
+   %r_t = cmpxchg $2 * %ptr, $2 %cmp, $2 %val seq_cst seq_cst
+   %r = extractvalue { $2, i1 } %r_t, 0
+  ',LLVM_VERSION,LLVM_3_7,`
    %r_t = cmpxchg $2 * %ptr, $2 %cmp, $2 %val seq_cst seq_cst
    %r = extractvalue { $2, i1 } %r_t, 0
   ',`
@@ -1604,6 +1621,50 @@ define void @__prefetch_read_uniform_nt(i8 *) alwaysinline {
   call void @llvm.prefetch(i8 * %0, i32 0, i32 0, i32 1)
   ret void
 }
+
+define void @__prefetch_read_varying_1(<WIDTH x i64> %addr, <WIDTH x MASK> %mask) alwaysinline {
+  per_lane(WIDTH, <WIDTH x MASK> %mask, `
+  %iptr_LANE_ID = extractelement <WIDTH x i64> %addr, i32 LANE
+  %ptr_LANE_ID = inttoptr i64 %iptr_LANE_ID to i8*
+  call void @llvm.prefetch(i8 * %ptr_LANE_ID, i32 0, i32 3, i32 1)
+  ')
+  ret void
+}
+
+declare void @__prefetch_read_varying_1_native(i8 * %base, i32 %scale, <WIDTH x i32> %offsets, <WIDTH x MASK> %mask) nounwind
+
+define void @__prefetch_read_varying_2(<WIDTH x i64> %addr, <WIDTH x MASK> %mask) alwaysinline {
+  per_lane(WIDTH, <WIDTH x MASK> %mask, `
+  %iptr_LANE_ID = extractelement <WIDTH x i64> %addr, i32 LANE
+  %ptr_LANE_ID = inttoptr i64 %iptr_LANE_ID to i8*
+  call void @llvm.prefetch(i8 * %ptr_LANE_ID, i32 0, i32 2, i32 1)
+  ')
+  ret void
+}
+
+declare void @__prefetch_read_varying_2_native(i8 * %base, i32 %scale, <WIDTH x i32> %offsets, <WIDTH x MASK> %mask) nounwind
+
+define void @__prefetch_read_varying_3(<WIDTH x i64> %addr, <WIDTH x MASK> %mask) alwaysinline {
+  per_lane(WIDTH, <WIDTH x MASK> %mask, `
+  %iptr_LANE_ID = extractelement <WIDTH x i64> %addr, i32 LANE
+  %ptr_LANE_ID = inttoptr i64 %iptr_LANE_ID to i8*
+  call void @llvm.prefetch(i8 * %ptr_LANE_ID, i32 0, i32 1, i32 1)
+  ')
+  ret void
+}
+
+declare void @__prefetch_read_varying_3_native(i8 * %base, i32 %scale, <WIDTH x i32> %offsets, <WIDTH x MASK> %mask) nounwind
+
+define void @__prefetch_read_varying_nt(<WIDTH x i64> %addr, <WIDTH x MASK> %mask) alwaysinline {
+  per_lane(WIDTH, <WIDTH x MASK> %mask, `
+  %iptr_LANE_ID = extractelement <WIDTH x i64> %addr, i32 LANE
+  %ptr_LANE_ID = inttoptr i64 %iptr_LANE_ID to i8*
+  call void @llvm.prefetch(i8 * %ptr_LANE_ID, i32 0, i32 0, i32 1)
+  ')
+  ret void
+}
+
+declare void @__prefetch_read_varying_nt_native(i8 * %base, i32 %scale, <WIDTH x i32> %offsets, <WIDTH x MASK> %mask) nounwind
 ')
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1749,13 +1810,13 @@ define void
 
   ;; Similarly for the output pointers
   %out0a = bitcast <8 x float> * %out0 to <4 x float> *
-  %out0b = getelementptr <4 x float> * %out0a, i32 1
+  %out0b = getelementptr PTR_OP_ARGS(`<4 x float>') %out0a, i32 1
   %out1a = bitcast <8 x float> * %out1 to <4 x float> *
-  %out1b = getelementptr <4 x float> * %out1a, i32 1
+  %out1b = getelementptr PTR_OP_ARGS(`<4 x float>') %out1a, i32 1
   %out2a = bitcast <8 x float> * %out2 to <4 x float> *
-  %out2b = getelementptr <4 x float> * %out2a, i32 1
+  %out2b = getelementptr PTR_OP_ARGS(`<4 x float>') %out2a, i32 1
   %out3a = bitcast <8 x float> * %out3 to <4 x float> *
-  %out3b = getelementptr <4 x float> * %out3a, i32 1
+  %out3b = getelementptr PTR_OP_ARGS(`<4 x float>') %out3a, i32 1
  
   ;; Do the first part--given input vectors like
   ;; <x0 y0 z0 x1 y1 z1 x2 y2> <z2 x3 y3 z3 x4 y4 z4 x5> <y5 z5 x6 y6 z6 x7 y7 z7>,
@@ -1798,13 +1859,13 @@ define void
          <4 x i32> <i32 4, i32 5, i32 6, i32 7>
 
   %out0a = bitcast <8 x float> * %out0 to <4 x float> *
-  %out0b = getelementptr <4 x float> * %out0a, i32 1
+  %out0b = getelementptr PTR_OP_ARGS(`<4 x float>') %out0a, i32 1
   %out1a = bitcast <8 x float> * %out1 to <4 x float> *
-  %out1b = getelementptr <4 x float> * %out1a, i32 1
+  %out1b = getelementptr PTR_OP_ARGS(`<4 x float>') %out1a, i32 1
   %out2a = bitcast <8 x float> * %out2 to <4 x float> *
-  %out2b = getelementptr <4 x float> * %out2a, i32 1
+  %out2b = getelementptr PTR_OP_ARGS(`<4 x float>') %out2a, i32 1
   %out3a = bitcast <8 x float> * %out3 to <4 x float> *
-  %out3b = getelementptr <4 x float> * %out3a, i32 1
+  %out3b = getelementptr PTR_OP_ARGS(`<4 x float>') %out3a, i32 1
 
   ;; First part--given input vectors
   ;; <x0 x1 x2 x3 x4 x5 x6 x7> <y0 y1 y2 y3 y4 y5 y6 y7> <z0 z1 z2 z3 z4 z5 z6 z7> 
@@ -1841,11 +1902,11 @@ define void
          <4 x i32> <i32 4, i32 5, i32 6, i32 7>
 
   %out0a = bitcast <8 x float> * %out0 to <4 x float> *
-  %out0b = getelementptr <4 x float> * %out0a, i32 1
+  %out0b = getelementptr PTR_OP_ARGS(`<4 x float>') %out0a, i32 1
   %out1a = bitcast <8 x float> * %out1 to <4 x float> *
-  %out1b = getelementptr <4 x float> * %out1a, i32 1
+  %out1b = getelementptr PTR_OP_ARGS(`<4 x float>') %out1a, i32 1
   %out2a = bitcast <8 x float> * %out2 to <4 x float> *
-  %out2b = getelementptr <4 x float> * %out2a, i32 1
+  %out2b = getelementptr PTR_OP_ARGS(`<4 x float>') %out2a, i32 1
 
   call void @__aos_to_soa3_float4(<4 x float> %v0a, <4 x float> %v0b,
          <4 x float> %v1a, <4 x float> * %out0a, <4 x float> * %out1a,
@@ -1875,11 +1936,11 @@ define void
          <4 x i32> <i32 4, i32 5, i32 6, i32 7>
 
   %out0a = bitcast <8 x float> * %out0 to <4 x float> *
-  %out0b = getelementptr <4 x float> * %out0a, i32 1
+  %out0b = getelementptr PTR_OP_ARGS(`<4 x float>') %out0a, i32 1
   %out1a = bitcast <8 x float> * %out1 to <4 x float> *
-  %out1b = getelementptr <4 x float> * %out1a, i32 1
+  %out1b = getelementptr PTR_OP_ARGS(`<4 x float>') %out1a, i32 1
   %out2a = bitcast <8 x float> * %out2 to <4 x float> *
-  %out2b = getelementptr <4 x float> * %out2a, i32 1
+  %out2b = getelementptr PTR_OP_ARGS(`<4 x float>') %out2a, i32 1
 
   call void @__soa_to_aos3_float4(<4 x float> %v0a, <4 x float> %v1a,
          <4 x float> %v2a, <4 x float> * %out0a, <4 x float> * %out0b,
@@ -1931,21 +1992,21 @@ define void
          <4 x i32> <i32 12, i32 13, i32 14, i32 15>
 
   %out0a = bitcast <16 x float> * %out0 to <4 x float> *
-  %out0b = getelementptr <4 x float> * %out0a, i32 1
-  %out0c = getelementptr <4 x float> * %out0a, i32 2
-  %out0d = getelementptr <4 x float> * %out0a, i32 3
+  %out0b = getelementptr PTR_OP_ARGS(`<4 x float>') %out0a, i32 1
+  %out0c = getelementptr PTR_OP_ARGS(`<4 x float>') %out0a, i32 2
+  %out0d = getelementptr PTR_OP_ARGS(`<4 x float>') %out0a, i32 3
   %out1a = bitcast <16 x float> * %out1 to <4 x float> *
-  %out1b = getelementptr <4 x float> * %out1a, i32 1
-  %out1c = getelementptr <4 x float> * %out1a, i32 2
-  %out1d = getelementptr <4 x float> * %out1a, i32 3
+  %out1b = getelementptr PTR_OP_ARGS(`<4 x float>') %out1a, i32 1
+  %out1c = getelementptr PTR_OP_ARGS(`<4 x float>') %out1a, i32 2
+  %out1d = getelementptr PTR_OP_ARGS(`<4 x float>') %out1a, i32 3
   %out2a = bitcast <16 x float> * %out2 to <4 x float> *
-  %out2b = getelementptr <4 x float> * %out2a, i32 1
-  %out2c = getelementptr <4 x float> * %out2a, i32 2
-  %out2d = getelementptr <4 x float> * %out2a, i32 3
+  %out2b = getelementptr PTR_OP_ARGS(`<4 x float>') %out2a, i32 1
+  %out2c = getelementptr PTR_OP_ARGS(`<4 x float>') %out2a, i32 2
+  %out2d = getelementptr PTR_OP_ARGS(`<4 x float>') %out2a, i32 3
   %out3a = bitcast <16 x float> * %out3 to <4 x float> *
-  %out3b = getelementptr <4 x float> * %out3a, i32 1
-  %out3c = getelementptr <4 x float> * %out3a, i32 2
-  %out3d = getelementptr <4 x float> * %out3a, i32 3
+  %out3b = getelementptr PTR_OP_ARGS(`<4 x float>') %out3a, i32 1
+  %out3c = getelementptr PTR_OP_ARGS(`<4 x float>') %out3a, i32 2
+  %out3d = getelementptr PTR_OP_ARGS(`<4 x float>') %out3a, i32 3
 
   call void @__aos_to_soa4_float4(<4 x float> %v0a, <4 x float> %v0b,
          <4 x float> %v0c, <4 x float> %v0d, <4 x float> * %out0a,
@@ -2002,21 +2063,21 @@ define void
          <4 x i32> <i32 12, i32 13, i32 14, i32 15>
 
   %out0a = bitcast <16 x float> * %out0 to <4 x float> *
-  %out0b = getelementptr <4 x float> * %out0a, i32 1
-  %out0c = getelementptr <4 x float> * %out0a, i32 2
-  %out0d = getelementptr <4 x float> * %out0a, i32 3
+  %out0b = getelementptr PTR_OP_ARGS(`<4 x float>') %out0a, i32 1
+  %out0c = getelementptr PTR_OP_ARGS(`<4 x float>') %out0a, i32 2
+  %out0d = getelementptr PTR_OP_ARGS(`<4 x float>') %out0a, i32 3
   %out1a = bitcast <16 x float> * %out1 to <4 x float> *
-  %out1b = getelementptr <4 x float> * %out1a, i32 1
-  %out1c = getelementptr <4 x float> * %out1a, i32 2
-  %out1d = getelementptr <4 x float> * %out1a, i32 3
+  %out1b = getelementptr PTR_OP_ARGS(`<4 x float>') %out1a, i32 1
+  %out1c = getelementptr PTR_OP_ARGS(`<4 x float>') %out1a, i32 2
+  %out1d = getelementptr PTR_OP_ARGS(`<4 x float>') %out1a, i32 3
   %out2a = bitcast <16 x float> * %out2 to <4 x float> *
-  %out2b = getelementptr <4 x float> * %out2a, i32 1
-  %out2c = getelementptr <4 x float> * %out2a, i32 2
-  %out2d = getelementptr <4 x float> * %out2a, i32 3
+  %out2b = getelementptr PTR_OP_ARGS(`<4 x float>') %out2a, i32 1
+  %out2c = getelementptr PTR_OP_ARGS(`<4 x float>') %out2a, i32 2
+  %out2d = getelementptr PTR_OP_ARGS(`<4 x float>') %out2a, i32 3
   %out3a = bitcast <16 x float> * %out3 to <4 x float> *
-  %out3b = getelementptr <4 x float> * %out3a, i32 1
-  %out3c = getelementptr <4 x float> * %out3a, i32 2
-  %out3d = getelementptr <4 x float> * %out3a, i32 3
+  %out3b = getelementptr PTR_OP_ARGS(`<4 x float>') %out3a, i32 1
+  %out3c = getelementptr PTR_OP_ARGS(`<4 x float>') %out3a, i32 2
+  %out3d = getelementptr PTR_OP_ARGS(`<4 x float>') %out3a, i32 3
 
   call void @__soa_to_aos4_float4(<4 x float> %v0a, <4 x float> %v1a,
          <4 x float> %v2a, <4 x float> %v3a, <4 x float> * %out0a,
@@ -2064,17 +2125,17 @@ define void
          <4 x i32> <i32 12, i32 13, i32 14, i32 15>
 
   %out0a = bitcast <16 x float> * %out0 to <4 x float> *
-  %out0b = getelementptr <4 x float> * %out0a, i32 1
-  %out0c = getelementptr <4 x float> * %out0a, i32 2
-  %out0d = getelementptr <4 x float> * %out0a, i32 3
+  %out0b = getelementptr PTR_OP_ARGS(`<4 x float>') %out0a, i32 1
+  %out0c = getelementptr PTR_OP_ARGS(`<4 x float>') %out0a, i32 2
+  %out0d = getelementptr PTR_OP_ARGS(`<4 x float>') %out0a, i32 3
   %out1a = bitcast <16 x float> * %out1 to <4 x float> *
-  %out1b = getelementptr <4 x float> * %out1a, i32 1
-  %out1c = getelementptr <4 x float> * %out1a, i32 2
-  %out1d = getelementptr <4 x float> * %out1a, i32 3
+  %out1b = getelementptr PTR_OP_ARGS(`<4 x float>') %out1a, i32 1
+  %out1c = getelementptr PTR_OP_ARGS(`<4 x float>') %out1a, i32 2
+  %out1d = getelementptr PTR_OP_ARGS(`<4 x float>') %out1a, i32 3
   %out2a = bitcast <16 x float> * %out2 to <4 x float> *
-  %out2b = getelementptr <4 x float> * %out2a, i32 1
-  %out2c = getelementptr <4 x float> * %out2a, i32 2
-  %out2d = getelementptr <4 x float> * %out2a, i32 3
+  %out2b = getelementptr PTR_OP_ARGS(`<4 x float>') %out2a, i32 1
+  %out2c = getelementptr PTR_OP_ARGS(`<4 x float>') %out2a, i32 2
+  %out2d = getelementptr PTR_OP_ARGS(`<4 x float>') %out2a, i32 3
 
   call void @__aos_to_soa3_float4(<4 x float> %v0a, <4 x float> %v0b,
          <4 x float> %v0c, <4 x float> * %out0a, <4 x float> * %out1a,
@@ -2122,17 +2183,17 @@ define void
          <4 x i32> <i32 12, i32 13, i32 14, i32 15>
 
   %out0a = bitcast <16 x float> * %out0 to <4 x float> *
-  %out0b = getelementptr <4 x float> * %out0a, i32 1
-  %out0c = getelementptr <4 x float> * %out0a, i32 2
-  %out0d = getelementptr <4 x float> * %out0a, i32 3
+  %out0b = getelementptr PTR_OP_ARGS(`<4 x float>') %out0a, i32 1
+  %out0c = getelementptr PTR_OP_ARGS(`<4 x float>') %out0a, i32 2
+  %out0d = getelementptr PTR_OP_ARGS(`<4 x float>') %out0a, i32 3
   %out1a = bitcast <16 x float> * %out1 to <4 x float> *
-  %out1b = getelementptr <4 x float> * %out1a, i32 1
-  %out1c = getelementptr <4 x float> * %out1a, i32 2
-  %out1d = getelementptr <4 x float> * %out1a, i32 3
+  %out1b = getelementptr PTR_OP_ARGS(`<4 x float>') %out1a, i32 1
+  %out1c = getelementptr PTR_OP_ARGS(`<4 x float>') %out1a, i32 2
+  %out1d = getelementptr PTR_OP_ARGS(`<4 x float>') %out1a, i32 3
   %out2a = bitcast <16 x float> * %out2 to <4 x float> *
-  %out2b = getelementptr <4 x float> * %out2a, i32 1
-  %out2c = getelementptr <4 x float> * %out2a, i32 2
-  %out2d = getelementptr <4 x float> * %out2a, i32 3
+  %out2b = getelementptr PTR_OP_ARGS(`<4 x float>') %out2a, i32 1
+  %out2c = getelementptr PTR_OP_ARGS(`<4 x float>') %out2a, i32 2
+  %out2d = getelementptr PTR_OP_ARGS(`<4 x float>') %out2a, i32 3
 
   call void @__soa_to_aos3_float4(<4 x float> %v0a, <4 x float> %v1a,
          <4 x float> %v2a, <4 x float> * %out0a, <4 x float> * %out0b,
@@ -2157,13 +2218,13 @@ define void
         <WIDTH x float> * noalias %out2, <WIDTH x float> * noalias %out3)
         nounwind alwaysinline { 
   %p0 = bitcast float * %p to <WIDTH x float> *
-  %v0 = load <WIDTH x float> * %p0, align 4
-  %p1 = getelementptr <WIDTH x float> * %p0, i32 1
-  %v1 = load <WIDTH x float> * %p1, align 4
-  %p2 = getelementptr <WIDTH x float> * %p0, i32 2
-  %v2 = load <WIDTH x float> * %p2, align 4
-  %p3 = getelementptr <WIDTH x float> * %p0, i32 3
-  %v3 = load <WIDTH x float> * %p3, align 4
+  %v0 = load PTR_OP_ARGS(`<WIDTH x float> ')  %p0, align 4
+  %p1 = getelementptr PTR_OP_ARGS(`<WIDTH x float>') %p0, i32 1
+  %v1 = load PTR_OP_ARGS(`<WIDTH x float> ')  %p1, align 4
+  %p2 = getelementptr PTR_OP_ARGS(`<WIDTH x float>') %p0, i32 2
+  %v2 = load PTR_OP_ARGS(`<WIDTH x float> ')  %p2, align 4
+  %p3 = getelementptr PTR_OP_ARGS(`<WIDTH x float>') %p0, i32 3
+  %v3 = load PTR_OP_ARGS(`<WIDTH x float> ')  %p3, align 4
   call void @__aos_to_soa4_float`'WIDTH (<WIDTH x float> %v0, <WIDTH x float> %v1, 
          <WIDTH x float> %v2, <WIDTH x float> %v3, <WIDTH x float> * %out0, 
          <WIDTH x float> * %out1, <WIDTH x float> * %out2, <WIDTH x float> * %out3)
@@ -2175,9 +2236,9 @@ define void
 @__soa_to_aos4_float(<WIDTH x float> %v0, <WIDTH x float> %v1, <WIDTH x float> %v2,
              <WIDTH x float> %v3, float * noalias %p) nounwind alwaysinline { 
   %out0 = bitcast float * %p to <WIDTH x float> *
-  %out1 = getelementptr <WIDTH x float> * %out0, i32 1
-  %out2 = getelementptr <WIDTH x float> * %out0, i32 2
-  %out3 = getelementptr <WIDTH x float> * %out0, i32 3
+  %out1 = getelementptr PTR_OP_ARGS(`<WIDTH x float>') %out0, i32 1
+  %out2 = getelementptr PTR_OP_ARGS(`<WIDTH x float>') %out0, i32 2
+  %out3 = getelementptr PTR_OP_ARGS(`<WIDTH x float>') %out0, i32 3
   call void @__soa_to_aos4_float`'WIDTH (<WIDTH x float> %v0, <WIDTH x float> %v1, 
          <WIDTH x float> %v2, <WIDTH x float> %v3, <WIDTH x float> * %out0, 
          <WIDTH x float> * %out1, <WIDTH x float> * %out2, <WIDTH x float> * %out3)
@@ -2190,11 +2251,11 @@ define void
         <WIDTH x float> * %out0, <WIDTH x float> * %out1,
         <WIDTH x float> * %out2) nounwind alwaysinline { 
   %p0 = bitcast float * %p to <WIDTH x float> *
-  %v0 = load <WIDTH x float> * %p0, align 4
-  %p1 = getelementptr <WIDTH x float> * %p0, i32 1
-  %v1 = load <WIDTH x float> * %p1, align 4
-  %p2 = getelementptr <WIDTH x float> * %p0, i32 2
-  %v2 = load <WIDTH x float> * %p2, align 4
+  %v0 = load PTR_OP_ARGS(`<WIDTH x float> ')  %p0, align 4
+  %p1 = getelementptr PTR_OP_ARGS(`<WIDTH x float>') %p0, i32 1
+  %v1 = load PTR_OP_ARGS(`<WIDTH x float> ')  %p1, align 4
+  %p2 = getelementptr PTR_OP_ARGS(`<WIDTH x float>') %p0, i32 2
+  %v2 = load PTR_OP_ARGS(`<WIDTH x float> ')  %p2, align 4
   call void @__aos_to_soa3_float`'WIDTH (<WIDTH x float> %v0, <WIDTH x float> %v1, 
          <WIDTH x float> %v2, <WIDTH x float> * %out0, <WIDTH x float> * %out1,
          <WIDTH x float> * %out2)
@@ -2206,8 +2267,8 @@ define void
 @__soa_to_aos3_float(<WIDTH x float> %v0, <WIDTH x float> %v1, <WIDTH x float> %v2,
                      float * noalias %p) nounwind alwaysinline { 
   %out0 = bitcast float * %p to <WIDTH x float> *
-  %out1 = getelementptr <WIDTH x float> * %out0, i32 1
-  %out2 = getelementptr <WIDTH x float> * %out0, i32 2
+  %out1 = getelementptr PTR_OP_ARGS(`<WIDTH x float>') %out0, i32 1
+  %out2 = getelementptr PTR_OP_ARGS(`<WIDTH x float>') %out0, i32 2
   call void @__soa_to_aos3_float`'WIDTH (<WIDTH x float> %v0, <WIDTH x float> %v1, 
          <WIDTH x float> %v2, <WIDTH x float> * %out0, <WIDTH x float> * %out1,
          <WIDTH x float> * %out2)
@@ -2554,6 +2615,31 @@ declare void
 declare void
 @__pseudo_scatter_base_offsets64_double(i8 * nocapture, i32, <WIDTH x i64>,
                                         <WIDTH x double>, <WIDTH x MASK>) nounwind
+
+
+declare void @__pseudo_prefetch_read_varying_1(<WIDTH x i64>, <WIDTH x MASK>) nounwind
+
+declare void
+@__pseudo_prefetch_read_varying_1_native(i8 *, i32, <WIDTH x i32>,
+                                         <WIDTH x MASK>) nounwind
+
+declare void @__pseudo_prefetch_read_varying_2(<WIDTH x i64>, <WIDTH x MASK>) nounwind
+
+declare void
+@__pseudo_prefetch_read_varying_2_native(i8 *, i32, <WIDTH x i32>,
+                                         <WIDTH x MASK>) nounwind
+
+declare void @__pseudo_prefetch_read_varying_3(<WIDTH x i64>, <WIDTH x MASK>) nounwind
+
+declare void
+@__pseudo_prefetch_read_varying_3_native(i8 *, i32, <WIDTH x i32>,
+                                         <WIDTH x MASK>) nounwind
+
+declare void @__pseudo_prefetch_read_varying_nt(<WIDTH x i64>, <WIDTH x MASK>) nounwind
+
+declare void
+@__pseudo_prefetch_read_varying_nt_native(i8 *, i32, <WIDTH x i32>,
+                                         <WIDTH x MASK>) nounwind
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -3054,6 +3140,41 @@ ifelse(HAVE_SCATTER, `1',
                                                     <WIDTH x double> %vd, <WIDTH x MASK> %mask)
 ')
 
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ;; prefetchs
+
+  call void @__pseudo_prefetch_read_varying_1(<WIDTH x i64> %v64, <WIDTH x MASK> %mask)
+
+  call void @__pseudo_prefetch_read_varying_1_native(i8 * %ptr, i32 0,
+                                                     <WIDTH x i32> %v32, <WIDTH x MASK> %mask)
+  call void @__prefetch_read_varying_1_native(i8 * %ptr, i32 0,
+                                              <WIDTH x i32> %v32, <WIDTH x MASK> %mask)
+  call void @__prefetch_read_varying_1(<WIDTH x i64> %v64, <WIDTH x MASK> %mask)
+
+  call void @__pseudo_prefetch_read_varying_2(<WIDTH x i64> %v64, <WIDTH x MASK> %mask)
+
+  call void @__pseudo_prefetch_read_varying_2_native(i8 * %ptr, i32 0,
+                                                     <WIDTH x i32> %v32, <WIDTH x MASK> %mask)
+  call void @__prefetch_read_varying_2_native(i8 * %ptr, i32 0,
+                                              <WIDTH x i32> %v32, <WIDTH x MASK> %mask)
+  call void @__prefetch_read_varying_2(<WIDTH x i64> %v64, <WIDTH x MASK> %mask)
+
+  call void @__pseudo_prefetch_read_varying_3(<WIDTH x i64> %v64, <WIDTH x MASK> %mask)
+
+  call void @__pseudo_prefetch_read_varying_3_native(i8 * %ptr, i32 0,
+                                                     <WIDTH x i32> %v32, <WIDTH x MASK> %mask)
+  call void @__prefetch_read_varying_3_native(i8 * %ptr, i32 0,
+                                              <WIDTH x i32> %v32, <WIDTH x MASK> %mask)
+  call void @__prefetch_read_varying_3(<WIDTH x i64> %v64, <WIDTH x MASK> %mask)
+
+  call void @__pseudo_prefetch_read_varying_nt(<WIDTH x i64> %v64, <WIDTH x MASK> %mask)
+
+  call void @__pseudo_prefetch_read_varying_nt_native(i8 * %ptr, i32 0,
+                                                     <WIDTH x i32> %v32, <WIDTH x MASK> %mask)
+  call void @__prefetch_read_varying_nt_native(i8 * %ptr, i32 0,
+                                              <WIDTH x i32> %v32, <WIDTH x MASK> %mask)
+  call void @__prefetch_read_varying_nt(<WIDTH x i64> %v64, <WIDTH x MASK> %mask)
+
   ret void
 }
 
@@ -3296,9 +3417,9 @@ declare void @free(i8 *)
 define noalias i8 * @__new_uniform_32rt(i64 %size) {
   %ptr = alloca i8*
   %conv = trunc i64 %size to i32
-  %alignment = load i32* @memory_alignment
+  %alignment = load PTR_OP_ARGS(`i32')  @memory_alignment
   %call1 = call i32 @posix_memalign(i8** %ptr, i32 %alignment, i32 %conv)
-  %ptr_val = load i8** %ptr
+  %ptr_val = load PTR_OP_ARGS(`i8*')  %ptr
   ret i8* %ptr_val
 }
 
@@ -3306,15 +3427,15 @@ define <WIDTH x i64> @__new_varying32_32rt(<WIDTH x i32> %size, <WIDTH x MASK> %
   %ret = alloca <WIDTH x i64>
   store <WIDTH x i64> zeroinitializer, <WIDTH x i64> * %ret
   %ret64 = bitcast <WIDTH x i64> * %ret to i64 *
-  %alignment = load i32* @memory_alignment
+  %alignment = load PTR_OP_ARGS(`i32')  @memory_alignment
 
   per_lane(WIDTH, <WIDTH x MASK> %mask, `
     %sz_LANE_ID = extractelement <WIDTH x i32> %size, i32 LANE
-    %store_LANE_ID = getelementptr i64 * %ret64, i32 LANE
+    %store_LANE_ID = getelementptr PTR_OP_ARGS(`i64') %ret64, i32 LANE
     %ptr_LANE_ID = bitcast i64* %store_LANE_ID to i8**
     %call_LANE_ID = call i32 @posix_memalign(i8** %ptr_LANE_ID, i32 %alignment, i32 %sz_LANE_ID)')
 
-  %r = load <WIDTH x i64> * %ret
+  %r = load PTR_OP_ARGS(`<WIDTH x i64> ')  %ret
   ret <WIDTH x i64> %r
 }
 
@@ -3350,10 +3471,10 @@ declare void @free(i8 *)
 
 define noalias i8 * @__new_uniform_64rt(i64 %size) {
   %ptr = alloca i8*
-  %alignment = load i32* @memory_alignment
+  %alignment = load PTR_OP_ARGS(`i32')  @memory_alignment
   %alignment64 = sext i32 %alignment to i64
   %call1 = call i32 @posix_memalign(i8** %ptr, i64 %alignment64, i64 %size)
-  %ptr_val = load i8** %ptr
+  %ptr_val = load PTR_OP_ARGS(`i8*') %ptr
   ret i8* %ptr_val
 }
 
@@ -3361,17 +3482,17 @@ define <WIDTH x i64> @__new_varying32_64rt(<WIDTH x i32> %size, <WIDTH x MASK> %
   %ret = alloca <WIDTH x i64>
   store <WIDTH x i64> zeroinitializer, <WIDTH x i64> * %ret
   %ret64 = bitcast <WIDTH x i64> * %ret to i64 *
-  %alignment = load i32* @memory_alignment
+  %alignment = load PTR_OP_ARGS(`i32')  @memory_alignment
   %alignment64 = sext i32 %alignment to i64
 
   per_lane(WIDTH, <WIDTH x MASK> %mask, `
     %sz_LANE_ID = extractelement <WIDTH x i32> %size, i32 LANE
     %sz64_LANE_ID = zext i32 %sz_LANE_ID to i64
-    %store_LANE_ID = getelementptr i64 * %ret64, i32 LANE
+    %store_LANE_ID = getelementptr PTR_OP_ARGS(`i64') %ret64, i32 LANE
     %ptr_LANE_ID = bitcast i64* %store_LANE_ID to i8**
     %call_LANE_ID = call i32 @posix_memalign(i8** %ptr_LANE_ID, i64 %alignment64, i64 %sz64_LANE_ID)')
 
-  %r = load <WIDTH x i64> * %ret
+  %r = load PTR_OP_ARGS(`<WIDTH x i64> ')  %ret
   ret <WIDTH x i64> %r
 }
 
@@ -3379,16 +3500,16 @@ define <WIDTH x i64> @__new_varying64_64rt(<WIDTH x i64> %size, <WIDTH x MASK> %
   %ret = alloca <WIDTH x i64>
   store <WIDTH x i64> zeroinitializer, <WIDTH x i64> * %ret
   %ret64 = bitcast <WIDTH x i64> * %ret to i64 *
-  %alignment = load i32* @memory_alignment
+  %alignment = load PTR_OP_ARGS(`i32')  @memory_alignment
   %alignment64 = sext i32 %alignment to i64
 
   per_lane(WIDTH, <WIDTH x MASK> %mask, `
     %sz64_LANE_ID = extractelement <WIDTH x i64> %size, i32 LANE
-    %store_LANE_ID = getelementptr i64 * %ret64, i32 LANE
+    %store_LANE_ID = getelementptr PTR_OP_ARGS(`i64') %ret64, i32 LANE
     %ptr_LANE_ID = bitcast i64* %store_LANE_ID to i8**
     %call_LANE_ID = call i32 @posix_memalign(i8** %ptr_LANE_ID, i64 %alignment64, i64 %sz64_LANE_ID)')
 
-  %r = load <WIDTH x i64> * %ret
+  %r = load PTR_OP_ARGS(`<WIDTH x i64> ')  %ret
   ret <WIDTH x i64> %r
 }
 
@@ -3432,7 +3553,7 @@ declare void @_aligned_free(i8 *)
 
 define noalias i8 * @__new_uniform_32rt(i64 %size) {
   %conv = trunc i64 %size to i32
-  %alignment = load i32* @memory_alignment
+  %alignment = load PTR_OP_ARGS(`i32')  @memory_alignment
   %ptr = tail call i8* @_aligned_malloc(i32 %conv, i32 %alignment)
   ret i8* %ptr
 }
@@ -3441,16 +3562,16 @@ define <WIDTH x i64> @__new_varying32_32rt(<WIDTH x i32> %size, <WIDTH x MASK> %
   %ret = alloca <WIDTH x i64>
   store <WIDTH x i64> zeroinitializer, <WIDTH x i64> * %ret
   %ret64 = bitcast <WIDTH x i64> * %ret to i64 *
-  %alignment = load i32* @memory_alignment
+  %alignment = load PTR_OP_ARGS(`i32')  @memory_alignment
 
   per_lane(WIDTH, <WIDTH x MASK> %mask, `
     %sz_LANE_ID = extractelement <WIDTH x i32> %size, i32 LANE
     %ptr_LANE_ID = call noalias i8 * @_aligned_malloc(i32 %sz_LANE_ID, i32 %alignment)
     %ptr_int_LANE_ID = ptrtoint i8 * %ptr_LANE_ID to i64
-    %store_LANE_ID = getelementptr i64 * %ret64, i32 LANE
+    %store_LANE_ID = getelementptr PTR_OP_ARGS(`i64') %ret64, i32 LANE
     store i64 %ptr_int_LANE_ID, i64 * %store_LANE_ID')
 
-  %r = load <WIDTH x i64> * %ret
+  %r = load PTR_OP_ARGS(`<WIDTH x i64> ')  %ret
   ret <WIDTH x i64> %r
 }
 
@@ -3485,7 +3606,7 @@ declare i8* @_aligned_malloc(i64, i64)
 declare void @_aligned_free(i8 *)
 
 define noalias i8 * @__new_uniform_64rt(i64 %size) {
-  %alignment = load i32* @memory_alignment
+  %alignment = load PTR_OP_ARGS(`i32')  @memory_alignment
   %alignment64 = sext i32 %alignment to i64
   %ptr = tail call i8* @_aligned_malloc(i64 %size, i64 %alignment64)
   ret i8* %ptr
@@ -3495,7 +3616,7 @@ define <WIDTH x i64> @__new_varying32_64rt(<WIDTH x i32> %size, <WIDTH x MASK> %
   %ret = alloca <WIDTH x i64>
   store <WIDTH x i64> zeroinitializer, <WIDTH x i64> * %ret
   %ret64 = bitcast <WIDTH x i64> * %ret to i64 *
-  %alignment = load i32* @memory_alignment
+  %alignment = load PTR_OP_ARGS(`i32')  @memory_alignment
   %alignment64 = sext i32 %alignment to i64
 
   per_lane(WIDTH, <WIDTH x MASK> %mask, `
@@ -3503,10 +3624,10 @@ define <WIDTH x i64> @__new_varying32_64rt(<WIDTH x i32> %size, <WIDTH x MASK> %
     %sz64_LANE_ID = zext i32 %sz_LANE_ID to i64
     %ptr_LANE_ID = call noalias i8 * @_aligned_malloc(i64 %sz64_LANE_ID, i64 %alignment64)
     %ptr_int_LANE_ID = ptrtoint i8 * %ptr_LANE_ID to i64
-    %store_LANE_ID = getelementptr i64 * %ret64, i32 LANE
+    %store_LANE_ID = getelementptr PTR_OP_ARGS(`i64') %ret64, i32 LANE
     store i64 %ptr_int_LANE_ID, i64 * %store_LANE_ID')
 
-  %r = load <WIDTH x i64> * %ret
+  %r = load PTR_OP_ARGS(`<WIDTH x i64> ')  %ret
   ret <WIDTH x i64> %r
 }
 
@@ -3514,17 +3635,17 @@ define <WIDTH x i64> @__new_varying64_64rt(<WIDTH x i64> %size, <WIDTH x MASK> %
   %ret = alloca <WIDTH x i64>
   store <WIDTH x i64> zeroinitializer, <WIDTH x i64> * %ret
   %ret64 = bitcast <WIDTH x i64> * %ret to i64 *
-  %alignment = load i32* @memory_alignment
+  %alignment = load PTR_OP_ARGS(`i32')  @memory_alignment
   %alignment64 = sext i32 %alignment to i64
 
   per_lane(WIDTH, <WIDTH x MASK> %mask, `
     %sz64_LANE_ID = extractelement <WIDTH x i64> %size, i32 LANE
     %ptr_LANE_ID = call noalias i8 * @_aligned_malloc(i64 %sz64_LANE_ID, i64 %alignment64)
     %ptr_int_LANE_ID = ptrtoint i8 * %ptr_LANE_ID to i64
-    %store_LANE_ID = getelementptr i64 * %ret64, i32 LANE
+    %store_LANE_ID = getelementptr PTR_OP_ARGS(`i64') %ret64, i32 LANE
     store i64 %ptr_int_LANE_ID, i64 * %store_LANE_ID')
 
-  %r = load <WIDTH x i64> * %ret
+  %r = load PTR_OP_ARGS(`<WIDTH x i64> ')  %ret
   ret <WIDTH x i64> %r
 }
 
@@ -3839,11 +3960,11 @@ define <$1 x i64> @__$2_varying_$3(<$1 x i64>, <$1 x i64>) nounwind alwaysinline
   %v1_`'i = extractelement <$1 x i64> %1, i32 i
   %c_`'i = icmp $4 i64 %v0_`'i, %v1_`'i
   %v_`'i = select i1 %c_`'i, i64 %v0_`'i, i64 %v1_`'i
-  %ptr_`'i = getelementptr i64 * %r64ptr, i32 i
+  %ptr_`'i = getelementptr PTR_OP_ARGS(`i64') %r64ptr, i32 i
   store i64 %v_`'i, i64 * %ptr_`'i
 ')                  
 
-  %ret = load <$1 x i64> * %rptr
+  %ret = load PTR_OP_ARGS(`<$1 x i64> ')  %rptr
   ret <$1 x i64> %ret
 }
 ')
@@ -3889,7 +4010,7 @@ entry:
 
 load: 
   %ptr = bitcast i8 * %0 to <WIDTH x $1> *
-  %valall = load <WIDTH x $1> * %ptr, align $2
+  %valall = load PTR_OP_ARGS(`<WIDTH x $1> ')  %ptr, align $2
   ret <WIDTH x $1> %valall
 
 loop:
@@ -3905,9 +4026,9 @@ load_lane:
   ; yes!  do the load and store the result into the appropriate place in the
   ; allocaed memory above
   %ptr32 = bitcast i8 * %0 to $1 *
-  %lane_ptr = getelementptr $1 * %ptr32, i32 %lane
-  %val = load $1 * %lane_ptr
-  %store_ptr = getelementptr $1 * %retptr32, i32 %lane
+  %lane_ptr = getelementptr PTR_OP_ARGS(`$1') %ptr32, i32 %lane
+  %val = load PTR_OP_ARGS(`$1 ')  %lane_ptr
+  %store_ptr = getelementptr PTR_OP_ARGS(`$1') %retptr32, i32 %lane
   store $1 %val, $1 * %store_ptr
   br label %lane_done
 
@@ -3917,7 +4038,7 @@ lane_done:
   br i1 %done, label %return, label %loop
 
 return:
-  %r = load <WIDTH x $1> * %retptr
+  %r = load PTR_OP_ARGS(`<WIDTH x $1> ')  %retptr
   ret <WIDTH x $1> %r
 }
 ')
@@ -3931,7 +4052,7 @@ return:
 define(`gen_masked_store', `
 define void @__masked_store_$1(<WIDTH x $1>* nocapture, <WIDTH x $1>, <WIDTH x MASK>) nounwind alwaysinline {
   per_lane(WIDTH, <WIDTH x MASK> %2, `
-      %ptr_LANE_ID = getelementptr <WIDTH x $1> * %0, i32 0, i32 LANE
+      %ptr_LANE_ID = getelementptr PTR_OP_ARGS(`<WIDTH x $1>') %0, i32 0, i32 LANE
       %storeval_LANE_ID = extractelement <WIDTH x $1> %1, i32 LANE
       store $1 %storeval_LANE_ID, $1 * %ptr_LANE_ID')
   ret void
@@ -3941,7 +4062,7 @@ define void @__masked_store_$1(<WIDTH x $1>* nocapture, <WIDTH x $1>, <WIDTH x M
 define(`masked_store_blend_8_16_by_4', `
 define void @__masked_store_blend_i8(<4 x i8>* nocapture, <4 x i8>,
                                      <4 x i32>) nounwind alwaysinline {
-  %old = load <4 x i8> * %0, align 1
+  %old = load PTR_OP_ARGS(`<4 x i8> ')  %0, align 1
   
   %m = trunc <4 x i32> %2 to <4 x i1>
   %resultvec = select <4 x i1> %m, <4 x i8> %1, <4 x i8> %old
@@ -3952,7 +4073,7 @@ define void @__masked_store_blend_i8(<4 x i8>* nocapture, <4 x i8>,
 
 define void @__masked_store_blend_i16(<4 x i16>* nocapture, <4 x i16>,
                                       <4 x i32>) nounwind alwaysinline {
-  %old = load <4 x i16> * %0, align 2
+  %old = load PTR_OP_ARGS(`<4 x i16> ')  %0, align 2
   
   %m = trunc <4 x i32> %2 to <4 x i1>
   %resultvec = select <4 x i1> %m, <4 x i16> %1, <4 x i16> %old
@@ -3965,7 +4086,7 @@ define void @__masked_store_blend_i16(<4 x i16>* nocapture, <4 x i16>,
 define(`masked_store_blend_8_16_by_4_mask64', `
 define void @__masked_store_blend_i8(<4 x i8>* nocapture, <4 x i8>,
                                      <4 x i64>) nounwind alwaysinline {
-  %old = load <4 x i8> * %0, align 1
+  %old = load PTR_OP_ARGS(`<4 x i8> ')  %0, align 1
 
   %m = trunc <4 x i64> %2 to <4 x i1>
   %resultvec = select <4 x i1> %m, <4 x i8> %1, <4 x i8> %old
@@ -3976,7 +4097,7 @@ define void @__masked_store_blend_i8(<4 x i8>* nocapture, <4 x i8>,
 
 define void @__masked_store_blend_i16(<4 x i16>* nocapture, <4 x i16>,
                                       <4 x i64>) nounwind alwaysinline {
-  %old = load <4 x i16> * %0, align 2
+  %old = load PTR_OP_ARGS(`<4 x i16> ')  %0, align 2
   
   %m = trunc <4 x i64> %2 to <4 x i1>
   %resultvec = select <4 x i1> %m, <4 x i16> %1, <4 x i16> %old
@@ -3989,7 +4110,7 @@ define void @__masked_store_blend_i16(<4 x i16>* nocapture, <4 x i16>,
 define(`masked_store_blend_8_16_by_8', `
 define void @__masked_store_blend_i8(<8 x i8>* nocapture, <8 x i8>,
                                      <8 x i32>) nounwind alwaysinline {
-  %old = load <8 x i8> * %0, align 1
+  %old = load PTR_OP_ARGS(`<8 x i8> ')  %0, align 1
   
   %m = trunc <8 x i32> %2 to <8 x i1>
   %resultvec = select <8 x i1> %m, <8 x i8> %1, <8 x i8> %old
@@ -4000,7 +4121,7 @@ define void @__masked_store_blend_i8(<8 x i8>* nocapture, <8 x i8>,
 
 define void @__masked_store_blend_i16(<8 x i16>* nocapture, <8 x i16>,
                                       <8 x i32>) nounwind alwaysinline {
-  %old = load <8 x i16> * %0, align 2
+  %old = load PTR_OP_ARGS(`<8 x i16> ')  %0, align 2
   
   %m = trunc <8 x i32> %2 to <8 x i1>
   %resultvec = select <8 x i1> %m, <8 x i16> %1, <8 x i16> %old
@@ -4014,7 +4135,7 @@ define void @__masked_store_blend_i16(<8 x i16>* nocapture, <8 x i16>,
 define(`masked_store_blend_8_16_by_16', `
 define void @__masked_store_blend_i8(<16 x i8>* nocapture, <16 x i8>,
                                      <16 x i32>) nounwind alwaysinline {
-  %old = load <16 x i8> * %0, align 1
+  %old = load PTR_OP_ARGS(`<16 x i8> ')  %0, align 1
 
   %m = trunc <16 x i32> %2 to <16 x i1>
   %resultvec = select <16 x i1> %m, <16 x i8> %1, <16 x i8> %old
@@ -4025,7 +4146,7 @@ define void @__masked_store_blend_i8(<16 x i8>* nocapture, <16 x i8>,
 
 define void @__masked_store_blend_i16(<16 x i16>* nocapture, <16 x i16>,
                                       <16 x i32>) nounwind alwaysinline {
-  %old = load <16 x i16> * %0, align 2
+  %old = load PTR_OP_ARGS(`<16 x i16> ')  %0, align 2
 
   %m = trunc <16 x i32> %2 to <16 x i1>
   %resultvec = select <16 x i1> %m, <16 x i16> %1, <16 x i16> %old
@@ -4066,7 +4187,7 @@ all_on:
   ;; everyone wants to load, so just load an entire vector width in a single
   ;; vector load
   %vecptr = bitcast i32 *%startptr to <WIDTH x i32> *
-  %vec_load = load <WIDTH x i32> *%vecptr, align 4
+  %vec_load = load PTR_OP_ARGS(`<WIDTH x i32> ') %vecptr, align 4
   store <WIDTH x i32> %vec_load, <WIDTH x i32> * %val_ptr, align 4
   ret i32 WIDTH
 
@@ -4084,10 +4205,10 @@ loop:
   br i1 %do_load, label %load, label %loopend 
 
 load:
-  %loadptr = getelementptr i32 *%startptr, i32 %offset
-  %loadval = load i32 *%loadptr
+  %loadptr = getelementptr PTR_OP_ARGS(`i32') %startptr, i32 %offset
+  %loadval = load PTR_OP_ARGS(`i32 ') %loadptr
   %val_ptr_i32 = bitcast <WIDTH x i32> * %val_ptr to i32 *
-  %storeptr = getelementptr i32 *%val_ptr_i32, i32 %lane
+  %storeptr = getelementptr PTR_OP_ARGS(`i32') %val_ptr_i32, i32 %lane
   store i32 %loadval, i32 *%storeptr
   %offset1 = add i32 %offset, 1
   br label %loopend
@@ -4136,7 +4257,7 @@ loop:
 
 store:
   %storeval = extractelement <WIDTH x i32> %vals, i32 %lane
-  %storeptr = getelementptr i32 *%startptr, i32 %offset
+  %storeptr = getelementptr PTR_OP_ARGS(`i32') %startptr, i32 %offset
   store i32 %storeval, i32 *%storeptr
   %offset1 = add i32 %offset, 1
   br label %loopend
@@ -4182,9 +4303,9 @@ loop:
 ;; zero or sign extending it, while zero extend is free. Also do nothing for
 ;; i64 MASK, as we need i64 value.
 ifelse(MASK, `i64',
-` %storeptr = getelementptr i32 *%startptr, MASK %offset',
+` %storeptr = getelementptr PTR_OP_ARGS(`i32') %startptr, MASK %offset',
 ` %offset1 = zext MASK %offset to i64
-  %storeptr = getelementptr i32 *%startptr, i64 %offset1')
+  %storeptr = getelementptr PTR_OP_ARGS(`i32') %startptr, i64 %offset1')
   store i32 %storeval, i32 *%storeptr
 
   %mull_mask = extractelement <WIDTH x MASK> %full_mask, i32 %i
@@ -4254,7 +4375,7 @@ domixed:
   %castptr = bitcast <$1 x $2> * %ptr to <$1 x $4> *
   %castv = bitcast <$1 x $2> %v to <$1 x $4>
   call void @__masked_store_blend_i$6(<$1 x $4> * %castptr, <$1 x $4> %castv, <$1 x MASK> %mask)
-  %blendvec = load <$1 x $2> * %ptr
+  %blendvec = load PTR_OP_ARGS(`<$1 x $2> ')  %ptr
   br label %check_neighbors
 
 check_neighbors:
@@ -4330,7 +4451,7 @@ define <$1 x $2> @__exclusive_scan_$6(<$1 x $2> %v,
   %vi = bitcast <$1 x $2> %v to <$1 x i`'$3>
   call void @__masked_store_blend_i$3(<$1 x i`'$3> * %ptr`'$3, <$1 x i`'$3> %vi,
                                       <$1 x MASK> %mask)
-  %v_id = load <$1 x $2> * %ptr
+  %v_id = load PTR_OP_ARGS(`<$1 x $2> ')  %ptr
 
   ; extract elements of the vector to use in computing the scan
   forloop(i, 0, eval($1-1), `
@@ -4450,12 +4571,12 @@ define <WIDTH x $1> @__gather32_$1(<WIDTH x i32> %ptrs,
   per_lane(WIDTH, <WIDTH x MASK> %vecmask, `
   %iptr_LANE_ID = extractelement <WIDTH x i32> %ptrs, i32 LANE
   %ptr_LANE_ID = inttoptr i32 %iptr_LANE_ID to $1 *
-  %val_LANE_ID = load $1 * %ptr_LANE_ID
-  %store_ptr_LANE_ID = getelementptr <WIDTH x $1> * %ret_ptr, i32 0, i32 LANE
+  %val_LANE_ID = load PTR_OP_ARGS(`$1 ')  %ptr_LANE_ID
+  %store_ptr_LANE_ID = getelementptr PTR_OP_ARGS(`<WIDTH x $1>') %ret_ptr, i32 0, i32 LANE
   store $1 %val_LANE_ID, $1 * %store_ptr_LANE_ID
  ')
 
-  %ret = load <WIDTH x $1> * %ret_ptr
+  %ret = load PTR_OP_ARGS(`<WIDTH x $1> ')  %ret_ptr
   ret <WIDTH x $1> %ret
 }
 
@@ -4466,12 +4587,12 @@ define <WIDTH x $1> @__gather64_$1(<WIDTH x i64> %ptrs,
   per_lane(WIDTH, <WIDTH x MASK> %vecmask, `
   %iptr_LANE_ID = extractelement <WIDTH x i64> %ptrs, i32 LANE
   %ptr_LANE_ID = inttoptr i64 %iptr_LANE_ID to $1 *
-  %val_LANE_ID = load $1 * %ptr_LANE_ID
-  %store_ptr_LANE_ID = getelementptr <WIDTH x $1> * %ret_ptr, i32 0, i32 LANE
+  %val_LANE_ID = load PTR_OP_ARGS(`$1 ')  %ptr_LANE_ID
+  %store_ptr_LANE_ID = getelementptr PTR_OP_ARGS(`<WIDTH x $1>') %ret_ptr, i32 0, i32 LANE
   store $1 %val_LANE_ID, $1 * %store_ptr_LANE_ID
  ')
 
-  %ret = load <WIDTH x $1> * %ret_ptr
+  %ret = load PTR_OP_ARGS(`<WIDTH x $1> ')  %ret_ptr
   ret <WIDTH x $1> %ret
 }
 ')
@@ -4490,15 +4611,15 @@ define <WIDTH x $1> @__gather_elt32_$1(i8 * %ptr, <WIDTH x i32> %offsets, i32 %o
   %offset64 = sext i32 %offset32 to i64
   %scale64 = sext i32 %offset_scale to i64
   %offset = mul i64 %offset64, %scale64
-  %ptroffset = getelementptr i8 * %ptr, i64 %offset
+  %ptroffset = getelementptr PTR_OP_ARGS(`i8') %ptr, i64 %offset
 
   %delta = extractelement <WIDTH x i32> %offset_delta, i32 %lane
   %delta64 = sext i32 %delta to i64
-  %finalptr = getelementptr i8 * %ptroffset, i64 %delta64
+  %finalptr = getelementptr PTR_OP_ARGS(`i8') %ptroffset, i64 %delta64
 
   ; load value and insert into returned value
   %ptrcast = bitcast i8 * %finalptr to $1 *
-  %val = load $1 *%ptrcast
+  %val = load PTR_OP_ARGS(`$1 ') %ptrcast
   %updatedret = insertelement <WIDTH x $1> %ret, $1 %val, i32 %lane
   ret <WIDTH x $1> %updatedret
 }
@@ -4512,14 +4633,14 @@ define <WIDTH x $1> @__gather_elt64_$1(i8 * %ptr, <WIDTH x i64> %offsets, i32 %o
   ; patterns that apply the free x86 2x/4x/8x scaling in addressing calculations
   %offset_scale64 = sext i32 %offset_scale to i64
   %offset = mul i64 %offset64, %offset_scale64
-  %ptroffset = getelementptr i8 * %ptr, i64 %offset
+  %ptroffset = getelementptr PTR_OP_ARGS(`i8') %ptr, i64 %offset
 
   %delta64 = extractelement <WIDTH x i64> %offset_delta, i32 %lane
-  %finalptr = getelementptr i8 * %ptroffset, i64 %delta64
+  %finalptr = getelementptr PTR_OP_ARGS(`i8') %ptroffset, i64 %delta64
 
   ; load value and insert into returned value
   %ptrcast = bitcast i8 * %finalptr to $1 *
-  %val = load $1 *%ptrcast
+  %val = load PTR_OP_ARGS(`$1 ') %ptrcast
   %updatedret = insertelement <WIDTH x $1> %ret, $1 %val, i32 %lane
   ret <WIDTH x $1> %updatedret
 }
@@ -4537,13 +4658,13 @@ define <WIDTH x $1> @__gather_factored_base_offsets32_$1(i8 * %ptr, <WIDTH x i32
   store <WIDTH x i32> zeroinitializer, <WIDTH x i32> * %offsetsPtr
   call void @__masked_store_blend_i32(<WIDTH x i32> * %offsetsPtr, <WIDTH x i32> %offsets, 
                                       <WIDTH x MASK> %vecmask)
-  %newOffsets = load <WIDTH x i32> * %offsetsPtr
+  %newOffsets = load PTR_OP_ARGS(`<WIDTH x i32> ')  %offsetsPtr
 
   %deltaPtr = alloca <WIDTH x i32>
   store <WIDTH x i32> zeroinitializer, <WIDTH x i32> * %deltaPtr
   call void @__masked_store_blend_i32(<WIDTH x i32> * %deltaPtr, <WIDTH x i32> %offset_delta, 
                                       <WIDTH x MASK> %vecmask)
-  %newDelta = load <WIDTH x i32> * %deltaPtr
+  %newDelta = load PTR_OP_ARGS(`<WIDTH x i32> ')  %deltaPtr
 
   %ret0 = call <WIDTH x $1> @__gather_elt32_$1(i8 * %ptr, <WIDTH x i32> %newOffsets,
                                             i32 %offset_scale, <WIDTH x i32> %newDelta,
@@ -4568,13 +4689,13 @@ define <WIDTH x $1> @__gather_factored_base_offsets64_$1(i8 * %ptr, <WIDTH x i64
   store <WIDTH x i64> zeroinitializer, <WIDTH x i64> * %offsetsPtr
   call void @__masked_store_blend_i64(<WIDTH x i64> * %offsetsPtr, <WIDTH x i64> %offsets, 
                                       <WIDTH x MASK> %vecmask)
-  %newOffsets = load <WIDTH x i64> * %offsetsPtr
+  %newOffsets = load PTR_OP_ARGS(`<WIDTH x i64> ')  %offsetsPtr
 
   %deltaPtr = alloca <WIDTH x i64>
   store <WIDTH x i64> zeroinitializer, <WIDTH x i64> * %deltaPtr
   call void @__masked_store_blend_i64(<WIDTH x i64> * %deltaPtr, <WIDTH x i64> %offset_delta, 
                                       <WIDTH x MASK> %vecmask)
-  %newDelta = load <WIDTH x i64> * %deltaPtr
+  %newDelta = load PTR_OP_ARGS(`<WIDTH x i64> ')  %deltaPtr
 
   %ret0 = call <WIDTH x $1> @__gather_elt64_$1(i8 * %ptr, <WIDTH x i64> %newOffsets,
                                             i32 %offset_scale, <WIDTH x i64> %newDelta,
@@ -4645,11 +4766,11 @@ define void @__scatter_elt32_$1(i8 * %ptr, <WIDTH x i32> %offsets, i32 %offset_s
   %offset64 = sext i32 %offset32 to i64
   %scale64 = sext i32 %offset_scale to i64
   %offset = mul i64 %offset64, %scale64
-  %ptroffset = getelementptr i8 * %ptr, i64 %offset
+  %ptroffset = getelementptr PTR_OP_ARGS(`i8') %ptr, i64 %offset
 
   %delta = extractelement <WIDTH x i32> %offset_delta, i32 %lane
   %delta64 = sext i32 %delta to i64
-  %finalptr = getelementptr i8 * %ptroffset, i64 %delta64
+  %finalptr = getelementptr PTR_OP_ARGS(`i8') %ptroffset, i64 %delta64
 
   %ptrcast = bitcast i8 * %finalptr to $1 *
   %storeval = extractelement <WIDTH x $1> %values, i32 %lane
@@ -4665,10 +4786,10 @@ define void @__scatter_elt64_$1(i8 * %ptr, <WIDTH x i64> %offsets, i32 %offset_s
   ; patterns that apply the free x86 2x/4x/8x scaling in addressing calculations
   %scale64 = sext i32 %offset_scale to i64
   %offset = mul i64 %offset64, %scale64
-  %ptroffset = getelementptr i8 * %ptr, i64 %offset
+  %ptroffset = getelementptr PTR_OP_ARGS(`i8') %ptr, i64 %offset
 
   %delta64 = extractelement <WIDTH x i64> %offset_delta, i32 %lane
-  %finalptr = getelementptr i8 * %ptroffset, i64 %delta64
+  %finalptr = getelementptr PTR_OP_ARGS(`i8') %ptroffset, i64 %delta64
 
   %ptrcast = bitcast i8 * %finalptr to $1 *
   %storeval = extractelement <WIDTH x $1> %values, i32 %lane
@@ -4884,6 +5005,62 @@ declare  double @__rcp_uniform_double(double)
 declare <WIDTH x double> @__rcp_varying_double(<WIDTH x double>)
 ')
 
+define(`declare_nvptx',
+`
+declare i32 @__program_index()  nounwind readnone alwaysinline
+declare i32 @__program_count()  nounwind readnone alwaysinline
+declare i32 @__warp_index()  nounwind readnone alwaysinline
+declare i32 @__task_index0()  nounwind readnone alwaysinline
+declare i32 @__task_index1()  nounwind readnone alwaysinline
+declare i32 @__task_index2()  nounwind readnone alwaysinline
+declare i32 @__task_index()  nounwind readnone alwaysinline
+declare i32 @__task_count0()  nounwind readnone alwaysinline
+declare i32 @__task_count1()  nounwind readnone alwaysinline
+declare i32 @__task_count2()  nounwind readnone alwaysinline
+declare i32 @__task_count()  nounwind readnone alwaysinline
+declare i64* @__cvt_loc2gen(i64 addrspace(3)*) nounwind readnone alwaysinline
+declare i64* @__cvt_const2gen(i64 addrspace(4)*) nounwind readnone alwaysinline
+declare i64* @__cvt_loc2gen_var(i64 addrspace(3)*) nounwind readnone alwaysinline
+declare i64 @__movmsk_ptx(<WIDTH x i1>) nounwind readnone alwaysinline;
+')
+
+define(`global_atomic_varying',`
+declare <$1 x $3> @__atomic_$2_varying_$4_global(<$1 x i64> %ptr, <$1 x $3> %val, <$1 x MASK> %maskv) nounwind alwaysinline
+')
+
+define(`global_atomic_cas_varying',`
+declare <$1 x $3> @__atomic_$2_varying_$4_global(<$1 x i64> %ptr, <$1 x $3> %cmp, <$1 x $3> %val, <$1 x MASK> %maskv) nounwind alwaysinline
+')
+
+global_atomic_cas_varying(WIDTH, compare_exchange, i32, int32)
+global_atomic_cas_varying(WIDTH, compare_exchange, i64, int64)
+global_atomic_cas_varying(WIDTH, compare_exchange, float, float)
+global_atomic_cas_varying(WIDTH, compare_exchange, double, double)
+
+global_atomic_varying(WIDTH, swap, i32, int32)
+global_atomic_varying(WIDTH, swap, i64, int64)
+global_atomic_varying(WIDTH, swap, float, float)
+global_atomic_varying(WIDTH, swap, double, double)
+
+global_atomic_varying(WIDTH, add, i32, int32)
+global_atomic_varying(WIDTH, sub, i32, int32)
+global_atomic_varying(WIDTH, and, i32, int32)
+global_atomic_varying(WIDTH, or, i32, int32)
+global_atomic_varying(WIDTH, xor, i32, int32)
+global_atomic_varying(WIDTH, min, i32, int32)
+global_atomic_varying(WIDTH, max, i32, int32)
+global_atomic_varying(WIDTH, umin, i32, uint32)
+global_atomic_varying(WIDTH, umax, i32, uint32)
+
+global_atomic_varying(WIDTH, add, i64, int64)
+global_atomic_varying(WIDTH, sub, i64, int64)
+global_atomic_varying(WIDTH, and, i64, int64)
+global_atomic_varying(WIDTH, or, i64, int64)
+global_atomic_varying(WIDTH, xor, i64, int64)
+global_atomic_varying(WIDTH, min, i64, int64)
+global_atomic_varying(WIDTH, max, i64, int64)
+global_atomic_varying(WIDTH, umin, i64, uint64)
+global_atomic_varying(WIDTH, umax, i64, uint64)
 
 define(`transcendetals_decl',`
     declare float @__log_uniform_float(float) nounwind readnone

@@ -1,7 +1,7 @@
 ;;
 ;; target-neon-16.ll
 ;;
-;;  Copyright(c) 2013 Google, Inc.
+;;  Copyright(c) 2013-2015 Google, Inc.
 ;;
 ;;  All rights reserved.
 ;;
@@ -524,3 +524,4 @@ rcpd_decl()
 
 transcendetals_decl()
 trigonometry_decl()
+saturation_arithmetic()

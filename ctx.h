@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2010-2014, Intel Corporation
+  Copyright (c) 2010-2015, Intel Corporation
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -195,6 +195,13 @@ public:
         'continue' statement when going through the loop body in the
         previous iteration. */
     void RestoreContinuedLanes();
+    
+    /** This method is called by code emitting IR for a loop.  It clears 
+        any lanes that contained a break since the mask has been updated to take
+        them into account.  This is necessary as all the bail out checks for 
+        breaks are meant to only deal with lanes breaking on the current iteration.
+     */
+    void ClearBreakLanes();
 
     /** Indicates that code generation for a "switch" statement is about to
         start.  isUniform indicates whether the "switch" value is uniform,
@@ -295,9 +302,17 @@ public:
         that indicates whether the two masks are equal. */
     llvm::Value *MasksAllEqual(llvm::Value *mask1, llvm::Value *mask2);
 
-    /** Generate ConstantVector, which contains ProgramIndex, i.e.
+    /** generate constantvector, which contains programindex, i.e.
         < i32 0, i32 1, i32 2, i32 3> */
     llvm::Value *ProgramIndexVector(bool is32bits = true);
+#ifdef ISPC_NVPTX_ENABLED
+    llvm::Value *ProgramIndexVectorPTX(bool is32bits = true);
+
+    /** Issues a call to __insert_int8/int16/int32/int64/float/double */
+    llvm::Value* Insert(llvm::Value *vector, llvm::Value *lane, llvm::Value *scalar);
+    /** Issues a call to __extract_int8/int16/int32/int64/float/double */
+    llvm::Value* Extract(llvm::Value *vector, llvm::Value *lane);
+#endif 
 
     /** Given a string, create an anonymous global variable to hold its
         value and return the pointer to the string. */
@@ -337,7 +352,11 @@ public:
         Instructions stored using Value pointers; the code here returns
         silently if it's not actually given an instruction. */
     void AddDebugPos(llvm::Value *instruction, const SourcePos *pos = NULL,
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
                      llvm::DIScope *scope = NULL);
+#else // LLVM 3.7++
+                     llvm::MDScope *scope = NULL);
+#endif
 
     /** Inform the debugging information generation code that a new scope
         is starting in the source program. */
@@ -349,7 +368,11 @@ public:
 
     /** Returns the llvm::DIScope corresponding to the current program
         scope. */
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
     llvm::DIScope GetDIScope() const;
+#else // LLVM 3.7++
+    llvm::MDScope *GetDIScope() const;
+#endif
 
     /** Emits debugging information for the variable represented by
         sym.  */
@@ -660,6 +683,7 @@ private:
         emitted. */
     std::vector<CFInfo *> controlFlowInfo;
 
+#if defined(LLVM_3_2) || defined(LLVM_3_3) || defined(LLVM_3_4) || defined(LLVM_3_5) || defined(LLVM_3_6)
     /** DIFile object corresponding to the source file where the current
         function was defined (used for debugging info). */
     llvm::DIFile diFile;
@@ -671,6 +695,19 @@ private:
     /** These correspond to the current set of nested scopes in the
         function. */
     std::vector<llvm::DILexicalBlock> debugScopes;
+#else // LLVM 3.7++
+    /** MDFile object corresponding to the source file where the current
+        function was defined (used for debugging info). */
+    llvm::MDFile *diFile;
+
+    /** MDSubprogram corresponding to this function (used for debugging
+        info). */
+    llvm::MDSubprogram *diSubprogram;
+
+    /** These correspond to the current set of nested scopes in the
+        function. */
+    std::vector<llvm::MDScope *> debugScopes;
+#endif
 
     /** True if a 'launch' statement has been encountered in the function. */
     bool launchedTasks;
