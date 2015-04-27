@@ -236,6 +236,9 @@ typedef enum {
 #if !defined(LLVM_3_2) && !defined(LLVM_3_3) && !defined(LLVM_3_4) && !defined(LLVM_3_5) // LLVM 3.6+
     // Broadwell. Supports AVX 2 + ADX/RDSEED/SMAP.
     CPU_Broadwell,
+
+    // Knight's landing. AVX512.
+    CPU_KNL,
 #endif
 
 #if !defined(LLVM_3_2) && !defined(LLVM_3_3) // LLVM 3.4+
@@ -316,6 +319,8 @@ public:
 
 #if !defined(LLVM_3_2) && !defined(LLVM_3_3) && !defined(LLVM_3_4) && !defined(LLVM_3_5) // LLVM 3.6+
         names[CPU_Broadwell].push_back("broadwell");
+
+        names[CPU_KNL].push_back("knl");
 #endif
 
 #ifdef ISPC_ARM_ENABLED
@@ -512,6 +517,10 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic, std
             case CPU_Silvermont:
 #endif
                 isa = "sse4-i32x4";
+                break;
+
+            case CPU_KNL:
+                isa = "avx512";
                 break;
 
             default:
@@ -881,6 +890,7 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic, std
         this->m_hasTranscendentals = false;
         this->m_hasTrigonometry = false;
         this->m_hasRsqrtd = this->m_hasRcpd = true;
+        CPUfromISA = CPU_KNL;
     }
 #endif // LLVM 3.4+
 #ifdef ISPC_ARM_ENABLED

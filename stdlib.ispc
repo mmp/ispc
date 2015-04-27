@@ -60,25 +60,24 @@
 ///////////////////////////////////////////////////////////////////////////
 // CUDA Specific primitives
 //
-/***************/
+/*
 
 __declspec(safe,cost0) static inline varying int __programIndex() { return __program_index(); }
 __declspec(safe,cost0) static inline uniform int __programCount() { return __program_count(); }
 __declspec(safe,cost0) static inline uniform int __warpIndex()    { return __warp_index();    }
-
-/***************/
 
 __declspec(safe,cost0) static inline uniform int __taskIndex0() { return __task_index0(); }
 __declspec(safe,cost0) static inline uniform int __taskIndex1() { return __task_index1(); }
 __declspec(safe,cost0) static inline uniform int __taskIndex2() { return __task_index2(); }
 __declspec(safe,cost0) static inline uniform int __taskIndex () { return __task_index (); }
 
-/***************/
 
 __declspec(safe,cost0) static inline uniform int __taskCount0() { return __task_count0(); }
 __declspec(safe,cost0) static inline uniform int __taskCount1() { return __task_count1(); }
 __declspec(safe,cost0) static inline uniform int __taskCount2() { return __task_count2(); }
 __declspec(safe,cost0) static inline uniform int __taskCount () { return __task_count (); }
+
+*/
 
 /* Limits of integral types. */
 #ifndef INT8_MAX
@@ -525,9 +524,11 @@ __declspec(safe)
 static inline uniform int popcnt(bool v) {
     // As with any() and all(), only count across the active lanes
 #if (ISPC_MASK_BITS == 1)
+  /*
     if (__is_nvptx_target)
       return __popcnt_int64(__movmsk_ptx(v & __mask));
     else
+  */
       return __popcnt_int64(__movmsk(v & __mask));
 #else
     return __popcnt_int64(__movmsk((UIntMaskType)__sext_varying_bool(v) & __mask));
