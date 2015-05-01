@@ -3565,10 +3565,10 @@ FunctionEmitContext::CallInst(llvm::Value *func, const FunctionType *funcType,
     AssertPos(currentPos, argVals.size() + 1 == calleeArgCount ||
            argVals.size() == calleeArgCount);
     if (argVals.size() + 1 == calleeArgCount) {
-//CO        argVals.push_back(GetFullMask());
-      llvm::Value *mask = GetFullMask();
-      llvm::Value *mask16 = BitCastInst(mask, LLVMTypes::Int16Type, "mask16");
-      argVals.push_back(mask16);
+        argVals.push_back(GetFullMask());
+//CO      llvm::Value *mask = GetFullMask();
+//CO      llvm::Value *mask16 = BitCastInst(mask, LLVMTypes::Int16Type, "mask16");
+//CO      argVals.push_back(mask16);
     }
 
     if (llvm::isa<llvm::VectorType>(func->getType()) == false) {

@@ -286,8 +286,9 @@ Function::emitCode(FunctionEmitContext *ctx, llvm::Function *function,
             llvm::Value *ptr = ctx->AddElementOffset(structParamPtr, nArgs, NULL,
                                                      "task_struct_mask");
             llvm::Value *ptrval = ctx->LoadInst(ptr, "mask");
-            llvm::Value *maski1 = ctx->BitCastInst(ptrval, LLVMTypes::MaskType);
-            ctx->SetFunctionMask(maski1);
+//CO            llvm::Value *maski1 = ctx->BitCastInst(ptrval, LLVMTypes::MaskType);
+//CO            ctx->SetFunctionMask(maski1);
+            ctx->SetFunctionMask(ptrval);
         }
 
         // Copy threadIndex and threadCount into stack-allocated storage so
@@ -352,10 +353,15 @@ Function::emitCode(FunctionEmitContext *ctx, llvm::Function *function,
 
             // Otherwise use the mask to set the entry mask value
             argIter->setName("__mask");
+#if 1
+            Assert(argIter->getType() == LLVMTypes::MaskType);
+            ctx->SetFunctionMask(argIter);
+#else
             Assert(argIter->getType() == LLVMTypes::Int16Type);
             llvm::Value *maski1 = ctx->BitCastInst(argIter, LLVMTypes::MaskType,
                                                    "maski1");
             ctx->SetFunctionMask(maski1);
+#endif
             Assert(++argIter == function->arg_end());
         }
 #ifdef ISPC_NVPTX_ENABLED
